@@ -15,7 +15,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
 - [x] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
 - [x] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
-- [ ] Phase 10: Final verification — run server, full npm test output, FINAL_REPORT.md, DONE
+- [x] Phase 10: Final verification — run server, full npm test output, FINAL_REPORT.md, DONE
 
 ## Log
 
@@ -46,6 +46,12 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - The exact Alexa+ MCP Toolkit `addon.json` schema isn't something I have verbatim; addon-package/addon.json follows every literal requirement in SPEC.md (shortDescription length, 3-4 example phrases, REPLACE-ME placeholders, integrations[0].type "MCP") but field names should be checked against the current Alexa+ MCP Toolkit docs before a real submission.
 - Docker daemon is not available in this sandbox (Docker Desktop wouldn't start), so the Dockerfile's `docker build` could not be run live. Verified every step it performs individually instead: `npm run build` produces `dist/`, and `node dist/server.js` (the exact final-stage CMD) runs correctly with `public/` assets served. The user should run `docker build -t front-desk .` themselves to confirm before relying on it.
 
+- Phase 10: final verification. `npm run build` compiles clean; `npm test` passes 49/49 (full output captured in FINAL_REPORT.md). Manually verified the multi-staff speech grouping example from SPEC.md verbatim: "Thursday at 6:15 or 6:30 PM with Priya, or 7:15 PM with Sam." Started the server with default config (`AUTH_MODE=none`, port 3000) and confirmed `/health` and `/` both respond correctly, both via `tsx` and via the compiled `dist/server.js`. Wrote FINAL_REPORT.md with the full test output and exact run/cloudflared/alexa-ai steps. Created DONE.
+
+## All SPEC.md requirements: status
+
+Every requirement in SPEC.md is implemented and covered by a passing test or a manual verification recorded in this file's Log section above, phase by phase. The only two things that could not be exercised live in this sandbox (no Docker daemon, no AWS credentials) are a real `docker build` and a real (non-stubbed) Bedrock API call; both are covered by equivalent-step verification and stubbed tests instead, noted under Known issues below.
+
 ## Next step
 
-Phase 10: final verification — start the server, capture full `npm test` output, write FINAL_REPORT.md with exact steps to run the server / expose it with cloudflared / connect with the alexa-ai CLI, then create DONE.
+None. All phases complete, npm test passes in full, DONE created. If resuming later: the two sandbox-only gaps noted above (live `docker build`, live Bedrock call with real AWS credentials) are the only things worth re-checking in an environment that has Docker and AWS access.
