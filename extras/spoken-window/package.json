@@ -1,0 +1,29 @@
+{
+  "name": "spoken-window",
+  "version": "1.0.0",
+  "description": "Parse spoken scheduling phrases like \"thursday after work\" or \"next weekend\" into a search window, using chrono-node and Luxon.",
+  "type": "module",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "keywords": ["nlp", "date", "time", "scheduling", "chrono-node", "luxon", "voice"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "chrono-node": "^2.7.7",
+    "luxon": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

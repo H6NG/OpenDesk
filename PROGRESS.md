@@ -14,7 +14,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
 - [x] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
 - [x] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
-- [ ] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
+- [x] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
 - [ ] Phase 10: Final verification — run server, full npm test output, FINAL_REPORT.md, DONE
 
 ## Log
@@ -36,12 +36,16 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 - Phase 8: test/e2e-helpers.ts (spawns the real server via `tsx src/server.ts` as a child process with a custom DATA_FILE fixture for full determinism instead of the randomized demo seed, polls /health for readiness, cleans up temp file + process on stop) + test/e2e.test.ts (21 tests). None-mode fixture ("shop-a") hand-codes a closed Sunday, a pre-booked-solid Monday, and normal Tue-Sat hours so closed/fully-booked/waitlist/double-booking/reschedule scenarios are deterministic rather than relying on the randomized seed. OAuth-mode fixture ("shop-b") has exactly one bookable slot so customer A fills it and customer B is guaranteed to be waitlisted. All scenarios from SPEC.md Part 1, Part 1b, and Part 2 pass, including the under-500ms-per-call assertion (actual p-max well under 100ms locally). Full suite: 49/49 tests passing.
 
+- Phase 9: README.md (pitch, mermaid architecture diagram, tools table, voice-design choices, run/connect/deploy/config docs), Dockerfile (multi-stage, node:22-slim, builds in a build stage, installs prod-only deps in a second stage, runs `dist/server.js` as the built-in `node` user), addon-package/addon.json (Alexa+ MCP Toolkit manifest, shortDescription 96 chars, 4 example phrases, REPLACE-ME placeholders for icons/carousel/privacy/terms/endpoint), extras/spoken-window/ (spoken-time engine extracted as its own MIT package with its own package.json/tsconfig/README/tests; `npm install && npm run build && npm test` all pass standalone, 15/15), SUBMISSION.md (Devpost pitch, AWS Builder answer, friction log, 2:45 demo script, with [YOU] placeholders for anything requiring the author's own first-person experience).
+
 ## Known issues / ambiguities
 
 - Harbour Physio and Massage hours not given in SPEC beyond "Wednesday has a lunch break" + 24h notice. Assumed Mon-Fri 9:00-17:00, Wed split 9-12/13-17, closed weekends.
 - Paws and Suds Grooming hours only "open Mon-Sat" with no times given. Assumed 9:00-17:00 Mon-Sat. Buffer/lead/cancel-notice for both Harbour and Paws not specified; used bufferMin 10, leadTimeMin 60, cancelNoticeHours 24 for both.
 - Massage service names ("60 min $120, 30 min $70") given without explicit names; named them "60-Minute Massage" / "30-Minute Massage".
+- The exact Alexa+ MCP Toolkit `addon.json` schema isn't something I have verbatim; addon-package/addon.json follows every literal requirement in SPEC.md (shortDescription length, 3-4 example phrases, REPLACE-ME placeholders, integrations[0].type "MCP") but field names should be checked against the current Alexa+ MCP Toolkit docs before a real submission.
+- Docker daemon is not available in this sandbox (Docker Desktop wouldn't start), so the Dockerfile's `docker build` could not be run live. Verified every step it performs individually instead: `npm run build` produces `dist/`, and `node dist/server.js` (the exact final-stage CMD) runs correctly with `public/` assets served. The user should run `docker build -t front-desk .` themselves to confirm before relying on it.
 
 ## Next step
 
-Phase 9: repo files — README.md (pitch, mermaid diagram, tools table, voice-design choices, run/deploy/config docs), Dockerfile, addon-package/addon.json, extras/spoken-window standalone package, SUBMISSION.md.
+Phase 10: final verification — start the server, capture full `npm test` output, write FINAL_REPORT.md with exact steps to run the server / expose it with cloudflared / connect with the alexa-ai CLI, then create DONE.

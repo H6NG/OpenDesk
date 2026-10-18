@@ -1,0 +1,31 @@
+{
+  "name": "Front Desk",
+  "shortDescription": "Book, reschedule, and cancel appointments at local barbers, clinics, and groomers, all by voice.",
+  "description": "Front Desk connects small local businesses, like barbershops, physio and massage clinics, and pet groomers, to Alexa+ voice booking. Ask to find a business, hear its services and hours, find an open time, and book it, all in one conversation. Front Desk also handles rescheduling, cancellations, and waitlists, and lets business owners onboard their catalog in minutes with Amazon Bedrock.",
+  "category": "SCHEDULE_AND_PLAN",
+  "examplePhrases": [
+    "Alexa, ask Front Desk to book a haircut for tomorrow afternoon.",
+    "Alexa, open Front Desk and find a dog groomer near me.",
+    "Alexa, ask Front Desk when Maple Street Barbers is open.",
+    "Alexa, tell Front Desk to cancel my appointment."
+  ],
+  "icons": {
+    "small": "REPLACE-ME-icon-small.png",
+    "large": "REPLACE-ME-icon-large.png"
+  },
+  "carousel": [
+    "REPLACE-ME-carousel-1.png",
+    "REPLACE-ME-carousel-2.png",
+    "REPLACE-ME-carousel-3.png"
+  ],
+  "privacyPolicyUrl": "REPLACE-ME-https://example.com/privacy",
+  "termsOfUseUrl": "REPLACE-ME-https://example.com/terms",
+  "integrations": [
+    {
+      "type": "MCP",
+      "endpoint": {
+        "url": "REPLACE-ME-https://your-deployment.example.com/mcp"
+      }
+    }
+  ]
+}
