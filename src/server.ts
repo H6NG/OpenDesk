@@ -8,6 +8,7 @@ import { now } from "./clock.js";
 import { warmUp } from "./availability.js";
 import { registerTools, SERVER_INSTRUCTIONS } from "./mcp/tools.js";
 import { LatencyTracker } from "./latency.js";
+import { bearerAuthMiddleware, registerOAuthRoutes } from "./oauth.js";
 
 export async function createApp() {
   const config = loadConfig();
@@ -18,13 +19,19 @@ export async function createApp() {
   const latency = new LatencyTracker();
   const app = express();
   app.disable("x-powered-by");
+  app.use(express.urlencoded({ extended: true }));
   app.use(express.json({ limit: "1mb" }));
 
-  app.post("/mcp", async (req, res) => {
+  if (config.authMode === "oauth") {
+    registerOAuthRoutes(app, config, store);
+  }
+
+  const mcpAuth = config.authMode === "oauth" ? [bearerAuthMiddleware(store)] : [];
+
+  app.post("/mcp", ...mcpAuth, async (req, res) => {
     const startedAt = Date.now();
 
-    const customerId = DEMO_CUSTOMER.id; // AUTH_MODE=oauth attaches req.customerId upstream (Phase 5)
-    const effectiveCustomerId = (req as express.Request & { customerId?: string }).customerId ?? customerId;
+    const effectiveCustomerId = (req as express.Request & { customerId?: string }).customerId ?? DEMO_CUSTOMER.id;
 
     const mcpServer = new McpServer(
       { name: "front-desk", version: "0.1.0" },

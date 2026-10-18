@@ -10,7 +10,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 2: Spoken-time engine (src/spokenTime.ts) + test/spokenTime.test.ts
 - [x] Phase 3: Availability engine (src/availability.ts)
 - [x] Phase 4: MCP server core (src/server.ts, src/mcp/tools.ts) — stateless Streamable HTTP, AUTH_MODE=none, 9 tools
-- [ ] Phase 5: OAuth account linking (src/oauth.ts) — PRM/AS metadata, authorize/token, login page
+- [x] Phase 5: OAuth account linking (src/oauth.ts) — PRM/AS metadata, authorize/token, login page
 - [ ] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
 - [ ] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
 - [ ] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
@@ -28,6 +28,8 @@ Working autonomously from SPEC.md. This file tracks phase completion.
   - Found and fixed a real timezone bug via manual smoke testing: `DateTime.fromISO(isoStringWithOffset)` without `{setZone: true}` silently reinterprets the instant in the *system* local zone, not the offset embedded in the string. This made spoken times wrong by the system/business zone difference (e.g. "8:45 PM" spoken for an actual 5:45 PM PDT slot, since the dev machine is US Eastern). Fixed every such call site in src/mcp/speech.ts, src/mcp/tools.ts, src/clock.ts, and test/availability.test.ts. Internal bookkeeping timestamps (createdAt/updatedAt/holdExpiresAt) now go through a new `isoUtc()` helper in clock.ts instead of defaulting to system zone.
   - Manually smoke-tested with a live server + MCP SDK client: full find->hold->confirm flow, double-booking prevention, idempotent confirm, reschedule by code, idempotent cancel, closed-day messaging, and latency (max 4ms over 10 calls, well under the 500ms/10ms targets).
 
+- Phase 5: src/oauth.ts — RFC 9728 protected-resource metadata (+ /mcp variant), RFC 8414 AS metadata, GET/POST /oauth/authorize (name+phone login form, upserts customer by phone), POST /oauth/token (authorization_code with PKCE S256-only + resource validation, refresh_token with rotation), custom 401-with-no-WWW-Authenticate bearer middleware wired only onto POST /mcp when AUTH_MODE=oauth (GET/DELETE /mcp still just 405, unaffected by auth). Access/refresh tokens stored as sha256 hashes; authorization codes single-use with 10-min TTL, resource and redirect_uri validated at both authorize and token steps. Manually smoke-tested the full flow live: PRM/AS metadata, 401 with no WWW-Authenticate header, wrong resource / plain PKCE / unregistered redirect_uri all rejected, wrong code_verifier -> invalid_grant, happy-path token issuance, query-string token -> 401, authenticated tool call attributed to the linked customer, refresh rotation with old-refresh-token reuse rejected.
+
 ## Known issues / ambiguities
 
 - Harbour Physio and Massage hours not given in SPEC beyond "Wednesday has a lunch break" + 24h notice. Assumed Mon-Fri 9:00-17:00, Wed split 9-12/13-17, closed weekends.
@@ -36,4 +38,4 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 ## Next step
 
-Phase 5: OAuth account linking (src/oauth.ts — PRM/AS metadata, authorize/token endpoints, login page, bearer middleware wired into POST /mcp).
+Phase 6: Bedrock integration (src/bedrock.ts — onboardBusiness, dailyBriefing, setBedrockClient) + test/bedrock.test.ts.
