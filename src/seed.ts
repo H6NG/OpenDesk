@@ -185,7 +185,8 @@ export function seedAppointments(
             const service = services[Math.floor(rng() * services.length)];
             // Booking probability inversely proportional to duration: a
             // quick 15-min service fills up much more than a 2-hour one.
-            const probability = Math.min(0.85, 40 / service.durationMin);
+            // Calibrated so a day ends up roughly 35-50% booked, not packed solid.
+            const probability = Math.min(0.5, 8 / service.durationMin);
             const roll = rng();
 
             if (roll < probability && cursorMin + service.durationMin <= shiftEndMin) {
