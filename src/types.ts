@@ -168,6 +168,11 @@ export const OnboardingStaffSchema = z.object({
   service_names: z.array(z.string()).min(1),
 });
 
+export const OnboardingHoursEntrySchema = z.object({
+  weekday: z.number().int().min(1).max(7).describe("1=Monday ... 7=Sunday"),
+  shifts: z.array(z.tuple([z.string(), z.string()])).describe('[["09:00","17:00"]]; empty array means closed that day'),
+});
+
 export const OnboardingSchema = z.object({
   name: z.string(),
   category: z.string(),
@@ -176,7 +181,10 @@ export const OnboardingSchema = z.object({
   city: z.string(),
   phone: z.string(),
   timezone: z.string(),
-  hours_text: z.string(),
+  hours: z.array(OnboardingHoursEntrySchema).min(1),
+  buffer_min: z.number().int().nonnegative().default(10),
+  lead_time_min: z.number().int().nonnegative().default(60),
+  cancel_notice_hours: z.number().int().nonnegative().default(24),
   services: z.array(OnboardingServiceSchema).min(1),
   staff: z.array(OnboardingStaffSchema).min(1),
   policy_note: z.string().default(""),

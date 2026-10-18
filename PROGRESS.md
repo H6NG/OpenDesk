@@ -11,7 +11,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 3: Availability engine (src/availability.ts)
 - [x] Phase 4: MCP server core (src/server.ts, src/mcp/tools.ts) — stateless Streamable HTTP, AUTH_MODE=none, 9 tools
 - [x] Phase 5: OAuth account linking (src/oauth.ts) — PRM/AS metadata, authorize/token, login page
-- [ ] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
+- [x] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
 - [ ] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
 - [ ] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
 - [ ] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
@@ -30,6 +30,8 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 - Phase 5: src/oauth.ts — RFC 9728 protected-resource metadata (+ /mcp variant), RFC 8414 AS metadata, GET/POST /oauth/authorize (name+phone login form, upserts customer by phone), POST /oauth/token (authorization_code with PKCE S256-only + resource validation, refresh_token with rotation), custom 401-with-no-WWW-Authenticate bearer middleware wired only onto POST /mcp when AUTH_MODE=oauth (GET/DELETE /mcp still just 405, unaffected by auth). Access/refresh tokens stored as sha256 hashes; authorization codes single-use with 10-min TTL, resource and redirect_uri validated at both authorize and token steps. Manually smoke-tested the full flow live: PRM/AS metadata, 401 with no WWW-Authenticate header, wrong resource / plain PKCE / unregistered redirect_uri all rejected, wrong code_verifier -> invalid_grant, happy-path token issuance, query-string token -> 401, authenticated tool call attributed to the linked customer, refresh rotation with old-refresh-token reuse rejected.
 
+- Phase 6: src/bedrock.ts — onboardBusiness (ConverseCommand, forced save_business tool via toolChoice, temperature 0, z.toJSONSchema with $schema stripped, zod validation with JSON-from-text fallback, slug ids, staff-name->serviceId mapping, rejects if any service has no staff who can perform it), dailyBriefing (<=90 words), setBedrockClient for test injection. Redesigned OnboardingSchema (src/types.ts) to carry structured per-weekday `hours` (not just free text) so an onboarded business is genuinely bookable immediately. 6 new tests in test/bedrock.test.ts, all pass (28/28 total).
+
 ## Known issues / ambiguities
 
 - Harbour Physio and Massage hours not given in SPEC beyond "Wednesday has a lunch break" + 24h notice. Assumed Mon-Fri 9:00-17:00, Wed split 9-12/13-17, closed weekends.
@@ -38,4 +40,4 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 ## Next step
 
-Phase 6: Bedrock integration (src/bedrock.ts — onboardBusiness, dailyBriefing, setBedrockClient) + test/bedrock.test.ts.
+Phase 7: Owner dashboard (public/dashboard.html, /api endpoints incl SSE, design per SPEC).
