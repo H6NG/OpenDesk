@@ -13,7 +13,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 5: OAuth account linking (src/oauth.ts) — PRM/AS metadata, authorize/token, login page
 - [x] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
 - [x] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
-- [ ] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
+- [x] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
 - [ ] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
 - [ ] Phase 10: Final verification — run server, full npm test output, FINAL_REPORT.md, DONE
 
@@ -34,6 +34,8 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 - Phase 7: src/dashboard.ts (GET /, /dashboard serving public/dashboard.html; GET /api/businesses, /api/state, /api/events (SSE via a new Store pub/sub), /api/briefing, POST /api/onboard, /api/businesses, /api/demo/reset; DASHBOARD_TOKEN via ?token= or x-dashboard-token header). public/dashboard.html: vanilla JS/CSS single-page dashboard, paper color scheme + dark mode, day tabs with "N by voice" counts, per-staff 15-min-ruled timeline with hatched closed hours, red now-line, single-line short blocks, SSE activity feed, waitlist panel, Bedrock briefing button, onboarding textarea -> build catalog -> preview table -> publish flow, MCP endpoint copy button, live Alexa+ p95 status polling /health. Smoke-tested all of /, /dashboard, every /api endpoint, SSE live event delivery, onboard (expected 502 without AWS creds in this sandbox, confirming correct error surfacing), publish, and DASHBOARD_TOKEN enforcement (query + header, 401 without/with-wrong token) against a live server.
 
+- Phase 8: test/e2e-helpers.ts (spawns the real server via `tsx src/server.ts` as a child process with a custom DATA_FILE fixture for full determinism instead of the randomized demo seed, polls /health for readiness, cleans up temp file + process on stop) + test/e2e.test.ts (21 tests). None-mode fixture ("shop-a") hand-codes a closed Sunday, a pre-booked-solid Monday, and normal Tue-Sat hours so closed/fully-booked/waitlist/double-booking/reschedule scenarios are deterministic rather than relying on the randomized seed. OAuth-mode fixture ("shop-b") has exactly one bookable slot so customer A fills it and customer B is guaranteed to be waitlisted. All scenarios from SPEC.md Part 1, Part 1b, and Part 2 pass, including the under-500ms-per-call assertion (actual p-max well under 100ms locally). Full suite: 49/49 tests passing.
+
 ## Known issues / ambiguities
 
 - Harbour Physio and Massage hours not given in SPEC beyond "Wednesday has a lunch break" + 24h notice. Assumed Mon-Fri 9:00-17:00, Wed split 9-12/13-17, closed weekends.
@@ -42,4 +44,4 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 ## Next step
 
-Phase 8: e2e tests (test/e2e.test.ts) — spawn the real server as a child process and drive it with the SDK Client, covering none mode, oauth mode, and the OAuth protocol edge cases from SPEC.md.
+Phase 9: repo files — README.md (pitch, mermaid diagram, tools table, voice-design choices, run/deploy/config docs), Dockerfile, addon-package/addon.json, extras/spoken-window standalone package, SUBMISSION.md.
