@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Front Desk</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #eef2f0;
+    --surface: #ffffff;
+    --ink: #1b2a41;
+    --ink-soft: #52637a;
+    --border: #d7ddd9;
+    --voice: #0e7c86;
+    --voice-soft: #e4f3f3;
+    --hold: #b9790f;
+    --hold-soft: #fbeed1;
+    --offer: #6a4fb0;
+    --offer-soft: #ece6f8;
+    --now-line: #d1393f;
+    --closed-stripe: rgba(27, 42, 65, 0.06);
+    --radius: 10px;
+  }
+  html[data-theme="dark"] {
+    --paper: #10161b;
+    --surface: #1a2228;
+    --ink: #e8edf0;
+    --ink-soft: #9aabb8;
+    --border: #2b363e;
+    --voice: #35c2cb;
+    --voice-soft: #16333a;
+    --hold: #e3ac4f;
+    --hold-soft: #3a3020;
+    --offer: #b299ea;
+    --offer-soft: #2c2440;
+    --now-line: #ff6b6f;
+    --closed-stripe: rgba(255, 255, 255, 0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    overflow-x: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
+  }
+  h1, h2, h3 { font-family: "Bricolage Grotesque", system-ui, sans-serif; margin: 0 0 0.5rem; }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: var(--radius);
+    padding: 0.45rem 0.8rem;
+    font-size: 0.9rem;
+  }
+  button.primary { background: var(--voice); color: #fff; border-color: var(--voice); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  textarea, select, input[type=text] {
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 0.5rem;
+  }
+
+  header {
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  header h1 { font-size: 1.3rem; flex: 0 0 auto; }
+  .spacer { flex: 1 1 auto; }
+  .endpoint-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--ink-soft); flex-wrap: wrap; }
+  .endpoint-row code { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.45rem; color: var(--ink); }
+  .status-pill { font-size: 0.78rem; color: var(--ink-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0.25rem 0.6rem; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 1rem;
+    padding: 1rem;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .day-tabs { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.25rem; }
+  .day-tab {
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.4rem 0.85rem;
+    background: var(--paper);
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+  .day-tab.active { background: var(--voice); color: #fff; border-color: var(--voice); }
+  .day-tab .voice-count { opacity: 0.85; }
+
+  .timeline-wrap { overflow-x: auto; max-width: 100%; }
+  .timeline {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(160px, 1fr);
+    position: relative;
+    min-width: 100%;
+  }
+  .staff-col { border-left: 1px solid var(--border); position: relative; }
+  .staff-col:first-child { border-left: none; }
+  .staff-head { text-align: center; font-weight: 700; padding: 0.4rem 0.25rem; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); font-size: 0.85rem; }
+  .staff-body { position: relative; }
+  .tick {
+    position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); opacity: 0.5;
+  }
+  .tick.hour { opacity: 0.9; }
+  .tick-label { position: absolute; left: 2px; top: -0.6rem; font-size: 0.65rem; color: var(--ink-soft); }
+  .closed-block {
+    position: absolute; left: 0; right: 0;
+    background-image: repeating-linear-gradient(45deg, var(--closed-stripe) 0 6px, transparent 6px 12px);
+  }
+  .now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--now-line); z-index: 5; }
+  .appt-block {
+    position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 0.2rem 0.35rem;
+    font-size: 0.72rem; line-height: 1.2; overflow: hidden; border: 2px solid var(--voice); background: var(--voice-soft); color: var(--ink);
+  }
+  .appt-block.hold { border-style: dashed; border-color: var(--hold); background: var(--hold-soft); }
+  .appt-block.offer { border-style: dashed; border-color: var(--offer); background: var(--offer-soft); }
+  .appt-block.other-source { border-color: var(--ink-soft); background: var(--surface); }
+  .appt-block.oneline { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
+  .appt-block .t { font-weight: 700; }
+
+  .side .card h2 { font-size: 1rem; }
+  .waitlist-row, .activity-row { font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+  .waitlist-row:last-child, .activity-row:last-child { border-bottom: none; }
+  .activity-feed { max-height: 220px; overflow-y: auto; }
+  .muted { color: var(--ink-soft); }
+
+  .onboard textarea { width: 100%; min-height: 90px; resize: vertical; }
+  .onboard .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+  table.preview { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.6rem; }
+  table.preview th, table.preview td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); }
+
+  footer { text-align: center; color: var(--ink-soft); font-size: 0.78rem; padding: 1rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Front Desk</h1>
+    <select id="business-picker"></select>
+    <div class="spacer"></div>
+    <div class="endpoint-row">
+      <span>MCP endpoint</span>
+      <code id="mcp-endpoint">-</code>
+      <button id="copy-endpoint">Copy</button>
+      <span class="status-pill" id="alexa-status">Alexa+ link: checking</span>
+    </div>
+    <button id="theme-toggle">Dark mode</button>
+  </header>
+
+  <main>
+    <section class="board">
+      <div class="card">
+        <div class="day-tabs" id="day-tabs"></div>
+        <div class="timeline-wrap">
+          <div class="timeline" id="timeline"></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card briefing">
+        <h2>Daily briefing</h2>
+        <button id="briefing-btn">Get Bedrock briefing</button>
+        <p class="muted" id="briefing-text">No briefing yet.</p>
+      </div>
+
+      <div class="card">
+        <h2>Waitlist</h2>
+        <div id="waitlist-list"><p class="muted">Nobody is waiting right now.</p></div>
+      </div>
+
+      <div class="card">
+        <h2>Activity</h2>
+        <div class="activity-feed" id="activity-feed"><p class="muted">Watching for activity...</p></div>
+      </div>
+
+      <div class="card onboard">
+        <h2>Put your business on Alexa+</h2>
+        <textarea id="onboard-desc" placeholder="Describe your business: name, services with durations and prices, staff, hours..."></textarea>
+        <div class="actions">
+          <button id="build-catalog-btn" class="primary">Build catalog with Bedrock</button>
+        </div>
+        <div id="preview-wrap" style="display:none">
+          <table class="preview" id="preview-table"></table>
+          <div class="actions">
+            <button id="publish-btn" class="primary">Publish to Alexa+</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>Front Desk, a voice booking front desk for small local businesses.</footer>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token");
+
+  function api(path) {
+    const url = new URL(path, location.origin);
+    if (token) url.searchParams.set("token", token);
+    return url.toString();
+  }
+
+  async function getJSON(path) {
+    const res = await fetch(api(path));
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+  async function postJSON(path, body) {
+    const res = await fetch(api(path), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
+
+  const state = { businesses: [], business: null, days: [], selectedDay: 0, now: null, appointments: [], waitlist: [], previewBusiness: null };
+
+  const dayTabsEl = document.getElementById("day-tabs");
+  const timelineEl = document.getElementById("timeline");
+  const pickerEl = document.getElementById("business-picker");
+  const waitlistEl = document.getElementById("waitlist-list");
+  const activityEl = document.getElementById("activity-feed");
+  const briefingTextEl = document.getElementById("briefing-text");
+  const mcpEndpointEl = document.getElementById("mcp-endpoint");
+  const alexaStatusEl = document.getElementById("alexa-status");
+
+  function fmtClock(iso) {
+    const d = new Date(iso);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const period = h < 12 ? "AM" : "PM";
+    h = h % 12 === 0 ? 12 : h % 12;
+    return h + ":" + String(m).padStart(2, "0") + " " + period;
+  }
+
+  function weekdayOf(dateIso) {
+    // 1=Mon..7=Sun, matching the server's HoursByWeekday convention
+    const d = new Date(dateIso + "T00:00:00");
+    const js = d.getDay(); // 0=Sun..6=Sat
+    return js === 0 ? 7 : js;
+  }
+
+  function dayLabel(dateIso, todayIso) {
+    if (dateIso === todayIso) return "Today";
+    const d = new Date(dateIso + "T00:00:00");
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function minutesOfDay(iso) {
+    const d = new Date(iso);
+    return d.getHours() * 60 + d.getMinutes();
+  }
+
+  async function loadBusinesses() {
+    const { businesses } = await getJSON("/api/businesses");
+    state.businesses = businesses;
+    pickerEl.innerHTML = businesses.map((b) => `<option value="${b.id}">${b.name}</option>`).join("");
+    if (businesses.length > 0) {
+      pickerEl.value = state.business || businesses[0].id;
+      await loadState(pickerEl.value);
+    }
+  }
+
+  async function loadState(businessId) {
+    const data = await getJSON("/api/state?business=" + encodeURIComponent(businessId) + "&days=7");
+    state.business = data.business.id;
+    state.businessObj = data.business;
+    state.now = data.now;
+    state.appointments = data.appointments;
+    state.waitlist = data.waitlist;
+    mcpEndpointEl.textContent = data.mcpEndpoint;
+
+    const todayIso = data.now.slice(0, 10);
+    state.days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(todayIso + "T00:00:00");
+      d.setDate(d.getDate() + i);
+      return d.toISOString().slice(0, 10);
+    });
+    renderDayTabs(todayIso);
+    renderTimeline();
+    renderWaitlist();
+  }
+
+  function renderDayTabs(todayIso) {
+    dayTabsEl.innerHTML = state.days
+      .map((dateIso, i) => {
+        const count = state.appointments.filter((a) => a.start.slice(0, 10) === dateIso && a.source === "alexa" && a.status !== "cancelled").length;
+        const active = i === state.selectedDay ? "active" : "";
+        return `<button class="day-tab ${active}" data-day="${i}">${dayLabel(dateIso, todayIso)} <span class="voice-count">(${count} by voice)</span></button>`;
+      })
+      .join("");
+    dayTabsEl.querySelectorAll(".day-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.selectedDay = Number(btn.dataset.day);
+        renderDayTabs(todayIso);
+        renderTimeline();
+      });
+    });
+  }
+
+  const PX_PER_MIN = 1.6;
+  const DAY_START_MIN = 7 * 60;
+  const DAY_END_MIN = 21 * 60;
+
+  function renderTimeline() {
+    const business = state.businessObj;
+    if (!business) return;
+    const dateIso = state.days[state.selectedDay];
+    const weekday = weekdayOf(dateIso);
+    const shifts = (business.hours[weekday] || business.hours[String(weekday)] || []);
+    const totalMin = DAY_END_MIN - DAY_START_MIN;
+    const heightPx = totalMin * PX_PER_MIN;
+
+    const dayAppointments = state.appointments.filter((a) => a.start.slice(0, 10) === dateIso);
+
+    const cols = business.staff
+      .map((staff) => {
+        const ticks = [];
+        for (let m = DAY_START_MIN; m <= DAY_END_MIN; m += 15) {
+          const top = (m - DAY_START_MIN) * PX_PER_MIN;
+          const isHour = m % 60 === 0;
+          ticks.push(
+            `<div class="tick ${isHour ? "hour" : ""}" style="top:${top}px">${isHour ? `<span class="tick-label">${fmtClock(dateIso + "T" + String(Math.floor(m / 60)).padStart(2, "0") + ":00:00")}</span>` : ""}</div>`,
+          );
+        }
+
+        const closedBlocks = [];
+        let openCursor = DAY_START_MIN;
+        const sortedShifts = [...shifts].sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [s, e] of sortedShifts) {
+          const sMin = toMin(s), eMin = toMin(e);
+          if (sMin > openCursor) closedBlocks.push([openCursor, Math.min(sMin, DAY_END_MIN)]);
+          openCursor = Math.max(openCursor, eMin);
+        }
+        if (openCursor < DAY_END_MIN) closedBlocks.push([openCursor, DAY_END_MIN]);
+        if (sortedShifts.length === 0) closedBlocks.length = 0, closedBlocks.push([DAY_START_MIN, DAY_END_MIN]);
+
+        const closedHtml = closedBlocks
+          .map(([a, b]) => {
+            const top = (a - DAY_START_MIN) * PX_PER_MIN;
+            const h = (b - a) * PX_PER_MIN;
+            return `<div class="closed-block" style="top:${top}px;height:${h}px"></div>`;
+          })
+          .join("");
+
+        const staffAppts = dayAppointments.filter((a) => a.staffId === staff.id);
+        const apptHtml = staffAppts
+          .map((a) => {
+            const service = business.services.find((s) => s.id === a.serviceId);
+            const startMin = minutesOfDay(a.start);
+            const endMin = minutesOfDay(a.end);
+            const top = (startMin - DAY_START_MIN) * PX_PER_MIN;
+            const h = Math.max(14, (endMin - startMin) * PX_PER_MIN);
+            const cls = ["appt-block"];
+            if (a.status === "held" && a.holdKind === "waitlist_offer") cls.push("offer");
+            else if (a.status === "held") cls.push("hold");
+            else if (a.source !== "alexa") cls.push("other-source");
+            const oneLine = h < 30;
+            if (oneLine) cls.push("oneline");
+            const label = service ? service.name : a.serviceId;
+            const inner = oneLine
+              ? `<span class="t">${fmtClock(a.start)}</span><span>${label}</span>`
+              : `<div class="t">${fmtClock(a.start)}</div><div>${label}</div><div>${a.customerName}</div>`;
+            return `<div class="${cls.join(" ")}" style="top:${top}px;height:${h}px" title="${label} with ${a.customerName}">${inner}</div>`;
+          })
+          .join("");
+
+        let nowLine = "";
+        if (dateIso === state.now.slice(0, 10)) {
+          const nowMin = minutesOfDay(state.now);
+          if (nowMin >= DAY_START_MIN && nowMin <= DAY_END_MIN) {
+            nowLine = `<div class="now-line" style="top:${(nowMin - DAY_START_MIN) * PX_PER_MIN}px"></div>`;
+          }
+        }
+
+        return `<div class="staff-col">
+          <div class="staff-head">${staff.name}</div>
+          <div class="staff-body" style="height:${heightPx}px">${closedHtml}${ticks.join("")}${apptHtml}${nowLine}</div>
+        </div>`;
+      })
+      .join("");
+
+    timelineEl.innerHTML = cols;
+  }
+
+  function toMin(hhmm) {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  function renderWaitlist() {
+    if (state.waitlist.length === 0) {
+      waitlistEl.innerHTML = '<p class="muted">Nobody is waiting right now.</p>';
+      return;
+    }
+    waitlistEl.innerHTML = state.waitlist
+      .map((w) => {
+        const business = state.businessObj;
+        const service = business ? business.services.find((s) => s.id === w.serviceId) : null;
+        const label = w.status === "offered" ? "spot offered" : "waiting";
+        return `<div class="waitlist-row">${w.customerName} - ${service ? service.name : w.serviceId} - ${w.windowLabel} (${label})</div>`;
+      })
+      .join("");
+  }
+
+  function renderActivityEvent(evt) {
+    const row = document.createElement("div");
+    row.className = "activity-row";
+    const time = new Date(evt.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    row.textContent = time + " - " + evt.message;
+    activityEl.prepend(row);
+    while (activityEl.children.length > 30) activityEl.removeChild(activityEl.lastChild);
+  }
+
+  function connectActivityFeed() {
+    const es = new EventSource(api("/api/events"));
+    es.onmessage = (e) => {
+      try {
+        const evt = JSON.parse(e.data);
+        renderActivityEvent(evt);
+      } catch {
+        /* ignore keep-alive comments */
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      setTimeout(connectActivityFeed, 3000);
+    };
+  }
+
+  async function refreshHealth() {
+    try {
+      const res = await fetch("/health");
+      const health = await res.json();
+      const p95 = health.latency.p95;
+      alexaStatusEl.textContent = `Alexa+ link live: ${health.latency.count} calls, p95 ${p95} ms (limit 500 ms)`;
+    } catch {
+      alexaStatusEl.textContent = "Alexa+ link: unavailable";
+    }
+  }
+
+  document.getElementById("copy-endpoint").addEventListener("click", () => {
+    navigator.clipboard?.writeText(mcpEndpointEl.textContent || "");
+  });
+
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    const root = document.documentElement;
+    const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    localStorage.setItem("frontdesk-theme", next);
+  });
+  (function initTheme() {
+    const saved = localStorage.getItem("frontdesk-theme");
+    const theme = saved || (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+
+  pickerEl.addEventListener("change", () => {
+    state.selectedDay = 0;
+    loadState(pickerEl.value);
+  });
+
+  document.getElementById("briefing-btn").addEventListener("click", async () => {
+    briefingTextEl.textContent = "Thinking...";
+    try {
+      const { briefing } = await getJSON("/api/briefing?business=" + encodeURIComponent(state.business));
+      briefingTextEl.textContent = briefing;
+    } catch (e) {
+      briefingTextEl.textContent = "Could not get a briefing: " + e.message;
+    }
+  });
+
+  document.getElementById("build-catalog-btn").addEventListener("click", async () => {
+    const description = document.getElementById("onboard-desc").value.trim();
+    if (!description) return;
+    const btn = document.getElementById("build-catalog-btn");
+    btn.disabled = true;
+    btn.textContent = "Building...";
+    try {
+      const { business } = await postJSON("/api/onboard", { description });
+      state.previewBusiness = business;
+      renderPreview(business);
+    } catch (e) {
+      alert("Could not build a catalog: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Build catalog with Bedrock";
+    }
+  });
+
+  function renderPreview(business) {
+    const wrap = document.getElementById("preview-wrap");
+    const table = document.getElementById("preview-table");
+    const rows = business.services
+      .map((s) => {
+        const staffNames = business.staff.filter((st) => st.serviceIds.includes(s.id)).map((st) => st.name).join(", ");
+        return `<tr><td>${s.name}</td><td>${s.durationMin} min</td><td>$${(s.priceCents / 100).toFixed(2)}</td><td>${staffNames}</td></tr>`;
+      })
+      .join("");
+    table.innerHTML = `<tr><th>Service</th><th>Duration</th><th>Price</th><th>Staff</th></tr>${rows}`;
+    wrap.style.display = "block";
+  }
+
+  document.getElementById("publish-btn").addEventListener("click", async () => {
+    if (!state.previewBusiness) return;
+    try {
+      await postJSON("/api/businesses", { business: state.previewBusiness });
+      document.getElementById("preview-wrap").style.display = "none";
+      document.getElementById("onboard-desc").value = "";
+      await loadBusinesses();
+    } catch (e) {
+      alert("Could not publish: " + e.message);
+    }
+  });
+
+  loadBusinesses();
+  connectActivityFeed();
+  refreshHealth();
+  setInterval(refreshHealth, 10000);
+  setInterval(() => state.business && loadState(state.business), 30000);
+})();
+</script>
+</body>
+</html>

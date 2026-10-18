@@ -12,7 +12,7 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 - [x] Phase 4: MCP server core (src/server.ts, src/mcp/tools.ts) — stateless Streamable HTTP, AUTH_MODE=none, 9 tools
 - [x] Phase 5: OAuth account linking (src/oauth.ts) — PRM/AS metadata, authorize/token, login page
 - [x] Phase 6: Bedrock integration (src/bedrock.ts) + test/bedrock.test.ts
-- [ ] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
+- [x] Phase 7: Owner dashboard (public/dashboard.html, /api endpoints, SSE)
 - [ ] Phase 8: e2e tests (test/e2e.test.ts) — none mode, oauth mode, part 2 oauth protocol
 - [ ] Phase 9: Repo files — README.md, Dockerfile, addon-package/addon.json, extras/spoken-window, SUBMISSION.md
 - [ ] Phase 10: Final verification — run server, full npm test output, FINAL_REPORT.md, DONE
@@ -32,6 +32,8 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 - Phase 6: src/bedrock.ts — onboardBusiness (ConverseCommand, forced save_business tool via toolChoice, temperature 0, z.toJSONSchema with $schema stripped, zod validation with JSON-from-text fallback, slug ids, staff-name->serviceId mapping, rejects if any service has no staff who can perform it), dailyBriefing (<=90 words), setBedrockClient for test injection. Redesigned OnboardingSchema (src/types.ts) to carry structured per-weekday `hours` (not just free text) so an onboarded business is genuinely bookable immediately. 6 new tests in test/bedrock.test.ts, all pass (28/28 total).
 
+- Phase 7: src/dashboard.ts (GET /, /dashboard serving public/dashboard.html; GET /api/businesses, /api/state, /api/events (SSE via a new Store pub/sub), /api/briefing, POST /api/onboard, /api/businesses, /api/demo/reset; DASHBOARD_TOKEN via ?token= or x-dashboard-token header). public/dashboard.html: vanilla JS/CSS single-page dashboard, paper color scheme + dark mode, day tabs with "N by voice" counts, per-staff 15-min-ruled timeline with hatched closed hours, red now-line, single-line short blocks, SSE activity feed, waitlist panel, Bedrock briefing button, onboarding textarea -> build catalog -> preview table -> publish flow, MCP endpoint copy button, live Alexa+ p95 status polling /health. Smoke-tested all of /, /dashboard, every /api endpoint, SSE live event delivery, onboard (expected 502 without AWS creds in this sandbox, confirming correct error surfacing), publish, and DASHBOARD_TOKEN enforcement (query + header, 401 without/with-wrong token) against a live server.
+
 ## Known issues / ambiguities
 
 - Harbour Physio and Massage hours not given in SPEC beyond "Wednesday has a lunch break" + 24h notice. Assumed Mon-Fri 9:00-17:00, Wed split 9-12/13-17, closed weekends.
@@ -40,4 +42,4 @@ Working autonomously from SPEC.md. This file tracks phase completion.
 
 ## Next step
 
-Phase 7: Owner dashboard (public/dashboard.html, /api endpoints incl SSE, design per SPEC).
+Phase 8: e2e tests (test/e2e.test.ts) — spawn the real server as a child process and drive it with the SDK Client, covering none mode, oauth mode, and the OAuth protocol edge cases from SPEC.md.

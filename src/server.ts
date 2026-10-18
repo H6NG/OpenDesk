@@ -9,6 +9,7 @@ import { warmUp } from "./availability.js";
 import { registerTools, SERVER_INSTRUCTIONS } from "./mcp/tools.js";
 import { LatencyTracker } from "./latency.js";
 import { bearerAuthMiddleware, registerOAuthRoutes } from "./oauth.js";
+import { registerDashboardRoutes } from "./dashboard.js";
 
 export async function createApp() {
   const config = loadConfig();
@@ -25,6 +26,7 @@ export async function createApp() {
   if (config.authMode === "oauth") {
     registerOAuthRoutes(app, config, store);
   }
+  registerDashboardRoutes(app, config, store);
 
   const mcpAuth = config.authMode === "oauth" ? [bearerAuthMiddleware(store)] : [];
 

@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { now } from "./clock.js";
+import { EventEmitter } from "node:events";
+import { now, isoUtc } from "./clock.js";
 import { seedBusinesses, seedAppointments } from "./seed.js";
 import type { ActivityEvent, ActivityEventType, Customer, StoreData } from "./types.js";
 
@@ -38,6 +39,7 @@ export class Store {
   private filePath: string | null;
   private saveTimer: NodeJS.Timeout | null = null;
   private pendingSave: Promise<void> | null = null;
+  private emitter = new EventEmitter();
 
   private constructor(data: StoreData, filePath: string | null) {
     this.data = data;
@@ -100,14 +102,23 @@ export class Store {
       businessId,
       type,
       message,
-      at: now().toISO()!,
+      at: isoUtc(now().toMillis()),
     };
     this.data.events.push(event);
     if (this.data.events.length > MAX_EVENTS) {
       this.data.events.splice(0, this.data.events.length - MAX_EVENTS);
     }
     this.touch();
+    this.emitter.emit("event", event);
     return event;
+  }
+
+  onActivityEvent(listener: (event: ActivityEvent) => void): void {
+    this.emitter.on("event", listener);
+  }
+
+  offActivityEvent(listener: (event: ActivityEvent) => void): void {
+    this.emitter.off("event", listener);
   }
 
   getBusiness(id: string) {
