@@ -194,7 +194,7 @@ function phraseLabel(normalized: string, day?: DateTime, nowRef?: DateTime): str
   return "any time";
 }
 
-function relativeDayLabel(day: DateTime, nowRef: DateTime): string {
+export function relativeDayLabel(day: DateTime, nowRef: DateTime): string {
   const today = nowRef.startOf("day");
   const diffDays = Math.round(day.startOf("day").diff(today, "days").days);
   if (diffDays === 0) return "today";
@@ -203,7 +203,7 @@ function relativeDayLabel(day: DateTime, nowRef: DateTime): string {
   return day.toFormat("cccc, MMMM d");
 }
 
-function formatClock(dt: DateTime): string {
+export function formatClock(dt: DateTime): string {
   const hour12 = dt.hour % 12 === 0 ? 12 : dt.hour % 12;
   const minute = String(dt.minute).padStart(2, "0");
   const period = dt.hour < 12 ? "AM" : "PM";

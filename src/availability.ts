@@ -28,7 +28,7 @@ export function staffCanPerform(staff: Staff, serviceId: string): boolean {
 }
 
 /** Per-request busy index: epoch-ms intervals per staff, buffer included, expired holds ignored. */
-function buildBusyIndex(business: Business, appointments: Appointment[], nowMs: number): Map<string, BusyInterval[]> {
+export function buildBusyIndex(business: Business, appointments: Appointment[], nowMs: number): Map<string, BusyInterval[]> {
   const bufferMs = business.bufferMin * 60_000;
   const byStaff = new Map<string, BusyInterval[]>();
   for (const appt of appointments) {
@@ -46,7 +46,7 @@ function buildBusyIndex(business: Business, appointments: Appointment[], nowMs: 
   return byStaff;
 }
 
-function overlapsBusy(candidateStartMs: number, candidateBusyEndMs: number, busy: BusyInterval[]): boolean {
+export function overlapsBusy(candidateStartMs: number, candidateBusyEndMs: number, busy: BusyInterval[]): boolean {
   // busy is sorted; a simple linear scan is fine since a day holds few appointments per staff.
   for (const interval of busy) {
     if (candidateStartMs < interval.endMs && interval.startMs < candidateBusyEndMs) return true;
@@ -207,6 +207,42 @@ export function findAvailability(params: FindAvailabilityParams): Slot[] {
   }
 
   return picked;
+}
+
+export function meetsLeadTime(business: Business, startMs: number, nowMs: number): boolean {
+  return startMs >= nowMs + business.leadTimeMin * 60_000;
+}
+
+/** Whether [startMs, startMs+durationMin) falls entirely within a single open shift. */
+export function fitsBusinessHours(business: Business, startMs: number, durationMin: number): boolean {
+  const start = DateTime.fromMillis(startMs, { zone: business.timezone });
+  const weekday = start.weekday;
+  const shifts = business.hours[weekday] ?? [];
+  const startMin = start.hour * 60 + start.minute;
+  const endMin = startMin + durationMin;
+  for (const [s, e] of shifts) {
+    const [sh, sm] = s.split(":").map(Number);
+    const [eh, em] = e.split(":").map(Number);
+    if (startMin >= sh * 60 + sm && endMin <= eh * 60 + em) return true;
+  }
+  return false;
+}
+
+export function isSlotFree(
+  business: Business,
+  appointments: Appointment[],
+  staffId: string,
+  startMs: number,
+  durationMin: number,
+  nowMs: number,
+  excludeAppointmentId?: string,
+): boolean {
+  const relevant = excludeAppointmentId ? appointments.filter((a) => a.id !== excludeAppointmentId) : appointments;
+  const busyIndex = buildBusyIndex(business, relevant, nowMs);
+  const busy = busyIndex.get(staffId) ?? [];
+  const bufferMs = business.bufferMin * 60_000;
+  const candidateBusyEnd = startMs + durationMin * 60_000 + bufferMs;
+  return !overlapsBusy(startMs, candidateBusyEnd, busy);
 }
 
 /** Warms up JIT/caches at boot so the first real Alexa+ call is fast. */

@@ -1,0 +1,480 @@
+import { z } from "zod";
+import { DateTime } from "luxon";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { Store } from "../store.js";
+import { formatHours, scoreBusinesses } from "../businesses.js";
+import { findAvailability, isOpenDuringWindow, staffCanPerform, type Slot } from "../availability.js";
+import { parseSpokenWindow, relativeDayLabel } from "../spokenTime.js";
+import { speakAvailability, speakConfirmation, speakHold, formatMoney } from "./speech.js";
+import {
+  BookingError,
+  cancelAppointment,
+  confirmAppointment,
+  holdAppointment,
+  joinWaitlist,
+  listMyAppointments,
+  rescheduleAppointment,
+  requireBusiness,
+  requireService,
+} from "../booking.js";
+
+export interface RequestContext {
+  store: Store;
+  customerId: string;
+  nowMs: number;
+}
+
+export const SERVER_INSTRUCTIONS = `Front Desk books appointments for small local businesses over voice.
+
+Flow: find_businesses -> get_business_details -> find_availability -> hold_appointment -> read the hold back to the customer and get an explicit yes -> confirm_appointment.
+
+Never call confirm_appointment without the customer explicitly saying yes to the hold you read back. Holds expire after 5 minutes, so confirm promptly once the customer agrees. Use list_my_appointments, reschedule_appointment, cancel_appointment and join_waitlist for managing existing bookings. All times in tool inputs/outputs are ISO 8601 with the business's local offset.`;
+
+function ok(speech: string, data: Record<string, unknown>): CallToolResult {
+  return {
+    content: [{ type: "text", text: speech }],
+    structuredContent: { speech, ...data },
+  };
+}
+
+function fail(message: string): CallToolResult {
+  return {
+    isError: true,
+    content: [{ type: "text", text: message }],
+  };
+}
+
+async function guarded(fn: () => CallToolResult): Promise<CallToolResult> {
+  try {
+    return fn();
+  } catch (e) {
+    if (e instanceof BookingError) return fail(e.message);
+    return fail(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+  }
+}
+
+function slotFromAppointment(store: Store, appointment: { serviceId: string; staffId: string; businessId: string; start: string; end: string }): Slot {
+  const business = store.getBusiness(appointment.businessId)!;
+  const service = business.services.find((s) => s.id === appointment.serviceId)!;
+  const staff = business.staff.find((s) => s.id === appointment.staffId)!;
+  return {
+    start: appointment.start,
+    end: appointment.end,
+    staffId: staff.id,
+    staffName: staff.name,
+    serviceId: service.id,
+    serviceName: service.name,
+    durationMin: service.durationMin,
+    priceCents: service.priceCents,
+  };
+}
+
+export function registerTools(server: McpServer, ctx: RequestContext): void {
+  const { store } = ctx;
+
+  server.registerTool(
+    "find_businesses",
+    {
+      title: "Find businesses",
+      description:
+        "Search the directory of local businesses by name, service keyword, or category (e.g. barber, physio, pet grooming). Use this first to find the business_id needed by other tools.",
+      inputSchema: {
+        query: z.string().optional().describe("Free-text search, e.g. 'dog groomer' or 'maple street'"),
+        category: z.string().optional().describe("Category filter, e.g. 'barber', 'physio', 'pet grooming'"),
+      },
+      outputSchema: {
+        speech: z.string(),
+        businesses: z.array(
+          z.object({ business_id: z.string(), name: z.string(), category: z.string(), city: z.string(), address: z.string() }),
+        ),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ query, category }) =>
+      guarded(() => {
+        const matches = scoreBusinesses(store.data.businesses, query, category);
+        if (matches.length === 0) {
+          return fail("I couldn't find a business matching that. Try a different name or category.");
+        }
+        const names = matches.map((m) => m.business.name);
+        const speech =
+          names.length === 1
+            ? `I found ${names[0]}.`
+            : `I found ${names.length}: ${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}.`;
+        return ok(speech, {
+          businesses: matches.map((m) => ({
+            business_id: m.business.id,
+            name: m.business.name,
+            category: m.business.category,
+            city: m.business.city,
+            address: m.business.address,
+          })),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "get_business_details",
+    {
+      title: "Get business details",
+      description: "Get full details for one business: services with prices, staff, hours, and cancellation policy. Use the business_id from find_businesses.",
+      inputSchema: {
+        business_id: z.string(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        business_id: z.string(),
+        name: z.string(),
+        hours_text: z.string(),
+        policy_note: z.string(),
+        services: z.array(z.object({ id: z.string(), name: z.string(), duration_min: z.number(), price_cents: z.number() })),
+        staff: z.array(z.object({ id: z.string(), name: z.string(), title: z.string() })),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ business_id }) =>
+      guarded(() => {
+        const business = requireBusiness(store, business_id);
+        const hoursText = formatHours(business);
+        const serviceNames = business.services.map((s) => `${s.name} for ${formatMoney(s.priceCents)}`).join(", ");
+        const speech = `${business.name}: ${serviceNames}. Hours: ${hoursText}. ${business.policyNote}`;
+        return ok(speech, {
+          business_id: business.id,
+          name: business.name,
+          hours_text: hoursText,
+          policy_note: business.policyNote,
+          services: business.services.map((s) => ({ id: s.id, name: s.name, duration_min: s.durationMin, price_cents: s.priceCents })),
+          staff: business.staff.map((s) => ({ id: s.id, name: s.name, title: s.title })),
+        });
+      }),
+  );
+
+  server.registerTool(
+    "find_availability",
+    {
+      title: "Find availability",
+      description:
+        "Find open appointment slots for a service at a business. 'when' accepts natural spoken phrases like 'thursday after work', 'tomorrow morning', 'asap'. Returns at most `limit` slots; if none are open, returns `alternatives` for the following week and whether the customer can join a waitlist.",
+      inputSchema: {
+        business_id: z.string(),
+        service_id: z.string(),
+        when: z.string().optional().describe("Spoken time phrase, e.g. 'thursday after work', 'tomorrow morning', 'asap'"),
+        date: z.string().optional().describe("Explicit date YYYY-MM-DD, used instead of 'when' if provided"),
+        staff: z.string().optional().describe("Staff name or id to restrict the search to"),
+        limit: z.number().int().min(1).max(8).optional().describe("Max slots to return, default 3"),
+      },
+      outputSchema: {
+        speech: z.string(),
+        slots: z.array(
+          z.object({ start: z.string(), end: z.string(), staff_id: z.string(), staff_name: z.string(), price_cents: z.number() }),
+        ),
+        alternatives: z
+          .array(z.object({ start: z.string(), end: z.string(), staff_id: z.string(), staff_name: z.string(), price_cents: z.number() }))
+          .optional(),
+        can_join_waitlist: z.boolean(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ business_id, service_id, when, date, staff, limit }) =>
+      guarded(() => {
+        const business = requireBusiness(store, business_id);
+        const service = requireService(business, service_id);
+        const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+
+        let staffId: string | undefined;
+        if (staff) {
+          const found = business.staff.find((s) => s.id === staff || s.name.toLowerCase() === staff.toLowerCase());
+          if (!found || !staffCanPerform(found, service.id)) {
+            return fail(`I couldn't find a staff member named "${staff}" who does ${service.name}. Use get_business_details to see the staff.`);
+          }
+          staffId = found.id;
+        }
+
+        const window = date
+          ? { fromDay: date, toDay: date, label: date }
+          : parseSpokenWindow(when ?? "", nowBiz);
+        const effectiveLimit = limit ?? 3;
+
+        const slots = findAvailability({
+          business,
+          service,
+          window,
+          staffFilter: staffId,
+          limit: effectiveLimit,
+          nowMs: ctx.nowMs,
+          appointments: store.data.appointments,
+        });
+
+        const toOutputSlot = (s: Slot) => ({ start: s.start, end: s.end, staff_id: s.staffId, staff_name: s.staffName, price_cents: s.priceCents });
+
+        if (slots.length > 0) {
+          return ok(speakAvailability(slots, nowBiz), { slots: slots.map(toOutputSlot), can_join_waitlist: false });
+        }
+
+        const open = isOpenDuringWindow(business, window.fromDay, window.toDay);
+        if (!open) {
+          const label =
+            window.fromDay === window.toDay
+              ? relativeDayLabel(DateTime.fromISO(window.fromDay, { zone: business.timezone }), nowBiz)
+              : null;
+          const speech = label ? `${business.name} is closed ${label}.` : `${business.name} is closed the whole time you asked about.`;
+          return ok(speech, { slots: [], can_join_waitlist: false });
+        }
+
+        const altFrom = DateTime.fromISO(window.toDay).plus({ days: 1 }).toISODate()!;
+        const altTo = DateTime.fromISO(window.toDay).plus({ days: 7 }).toISODate()!;
+        let alternatives = findAvailability({
+          business,
+          service,
+          window: { fromDay: altFrom, toDay: altTo, band: window.band, label: "alternatives" },
+          staffFilter: staffId,
+          limit: effectiveLimit,
+          nowMs: ctx.nowMs,
+          appointments: store.data.appointments,
+        });
+        if (alternatives.length === 0 && window.band) {
+          alternatives = findAvailability({
+            business,
+            service,
+            window: { fromDay: altFrom, toDay: altTo, label: "alternatives-any-time" },
+            staffFilter: staffId,
+            limit: effectiveLimit,
+            nowMs: ctx.nowMs,
+            appointments: store.data.appointments,
+          });
+        }
+
+        const speech =
+          alternatives.length > 0
+            ? `${business.name} is fully booked then. The next opening I see is ${speakAvailability(alternatives, nowBiz)} Want me to add you to the waitlist for your original time instead?`
+            : `${business.name} is fully booked for the next week. Want me to add you to the waitlist?`;
+
+        return ok(speech, { slots: [], alternatives: alternatives.map(toOutputSlot), can_join_waitlist: true });
+      }),
+  );
+
+  server.registerTool(
+    "hold_appointment",
+    {
+      title: "Hold an appointment",
+      description:
+        "Place a 5-minute hold on a specific slot (from find_availability) so the customer can confirm. Does not book the appointment yet. Read the hold back to the customer and get an explicit yes before calling confirm_appointment.",
+      inputSchema: {
+        business_id: z.string(),
+        service_id: z.string(),
+        start: z.string().describe("ISO 8601 start time, e.g. from a find_availability slot"),
+        staff: z.string().optional(),
+        notes: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        hold_id: z.string(),
+        expires_at: z.string(),
+        start: z.string(),
+        end: z.string(),
+        staff_name: z.string(),
+        price_cents: z.number(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ business_id, service_id, start, staff, notes }) =>
+      guarded(() => {
+        const { appointment, business, staff: chosenStaff } = holdAppointment(store, ctx.nowMs, ctx.customerId, {
+          businessId: business_id,
+          serviceId: service_id,
+          startIso: start,
+          staffHint: staff,
+          notes,
+        });
+        const slot = slotFromAppointment(store, appointment);
+        const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+        const speech = speakHold(slot, business.name, nowBiz);
+        return ok(speech, {
+          hold_id: appointment.id,
+          expires_at: appointment.holdExpiresAt,
+          start: appointment.start,
+          end: appointment.end,
+          staff_name: chosenStaff.name,
+          price_cents: slot.priceCents,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "confirm_appointment",
+    {
+      title: "Confirm a held appointment",
+      description: "Confirm a hold created by hold_appointment, after the customer has explicitly said yes. Idempotent: confirming an already-confirmed hold just reads back the same confirmation.",
+      inputSchema: {
+        hold_id: z.string(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        code: z.string(),
+        start: z.string(),
+        end: z.string(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ hold_id }) =>
+      guarded(() => {
+        const { appointment, business, service, staff } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
+        const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+        const speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz);
+        return ok(speech, { code: appointment.code, start: appointment.start, end: appointment.end });
+      }),
+  );
+
+  server.registerTool(
+    "list_my_appointments",
+    {
+      title: "List my appointments",
+      description: "List the customer's upcoming held and confirmed appointments, including any waitlist spots that just opened up.",
+      inputSchema: {},
+      outputSchema: {
+        speech: z.string(),
+        appointments: z.array(
+          z.object({
+            id: z.string(),
+            code: z.string(),
+            business_name: z.string(),
+            service_name: z.string(),
+            staff_name: z.string(),
+            start: z.string(),
+            status: z.string(),
+            is_waitlist_offer: z.boolean(),
+          }),
+        ),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async () =>
+      guarded(() => {
+        const appts = listMyAppointments(store, ctx.nowMs, ctx.customerId);
+        if (appts.length === 0) {
+          return ok("You don't have any upcoming appointments.", { appointments: [] });
+        }
+        const rows = appts.map((a) => {
+          const business = store.getBusiness(a.businessId)!;
+          const service = business.services.find((s) => s.id === a.serviceId)!;
+          const staff = business.staff.find((s) => s.id === a.staffId)!;
+          const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+          const isOffer = a.holdKind === "waitlist_offer";
+          const when = relativeDayLabel(DateTime.fromISO(a.start, { setZone: true }), nowBiz);
+          return {
+            id: a.id,
+            code: a.code,
+            business_name: business.name,
+            service_name: service.name,
+            staff_name: staff.name,
+            start: a.start,
+            status: a.status,
+            is_waitlist_offer: isOffer,
+            _speechLine: isOffer
+              ? `Good news: a spot opened up for ${service.name} at ${business.name} on ${when} with ${staff.name}; say confirm to grab it.`
+              : `${service.name} at ${business.name} with ${staff.name} on ${when}, code ${a.code}`,
+          };
+        });
+        const speech = `You have ${rows.length} appointment${rows.length === 1 ? "" : "s"}: ${rows.map((r) => r._speechLine).join(". ")}.`;
+        return ok(speech, { appointments: rows.map(({ _speechLine, ...rest }) => rest) });
+      }),
+  );
+
+  server.registerTool(
+    "reschedule_appointment",
+    {
+      title: "Reschedule an appointment",
+      description: "Move an existing held or confirmed appointment to a new start time. Identify the appointment by appointment_id or its 4-character code. The freed original slot is automatically offered to the waitlist.",
+      inputSchema: {
+        appointment_id: z.string().optional(),
+        code: z.string().optional(),
+        new_start: z.string().describe("ISO 8601 new start time"),
+        staff: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        start: z.string(),
+        end: z.string(),
+        staff_name: z.string(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ appointment_id, code, new_start, staff }) =>
+      guarded(() => {
+        const idOrCode = appointment_id ?? code;
+        if (!idOrCode) return fail("I need either the appointment id or the confirmation code to reschedule it.");
+        const { appointment, business, staff: newStaff } = rescheduleAppointment(store, ctx.nowMs, ctx.customerId, {
+          idOrCode,
+          newStartIso: new_start,
+          staffHint: staff,
+        });
+        const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+        const speech = `Done. Your appointment is now ${relativeDayLabel(DateTime.fromISO(appointment.start, { setZone: true }), nowBiz)} with ${newStaff.name}.`;
+        return ok(speech, { start: appointment.start, end: appointment.end, staff_name: newStaff.name });
+      }),
+  );
+
+  server.registerTool(
+    "cancel_appointment",
+    {
+      title: "Cancel an appointment",
+      description: "Cancel an existing held or confirmed appointment, identified by appointment_id or its 4-character code. Idempotent: cancelling an already-cancelled appointment just confirms it's cancelled. Warns about a late cancellation fee inside the business's notice window, and automatically offers the freed slot to the waitlist.",
+      inputSchema: {
+        appointment_id: z.string().optional(),
+        code: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        cancelled: z.boolean(),
+        late_fee_warning: z.boolean(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ appointment_id, code }) =>
+      guarded(() => {
+        const idOrCode = appointment_id ?? code;
+        if (!idOrCode) return fail("I need either the appointment id or the confirmation code to cancel it.");
+        const { alreadyCancelled, lateFee, business } = cancelAppointment(store, ctx.nowMs, ctx.customerId, idOrCode);
+        if (alreadyCancelled) {
+          return ok("That appointment is already cancelled.", { cancelled: true, late_fee_warning: false });
+        }
+        const speech = lateFee
+          ? `Cancelled. Since that's within ${business.cancelNoticeHours} hours of the appointment, a late cancellation fee may apply.`
+          : "Cancelled. No fee since you gave enough notice.";
+        return ok(speech, { cancelled: true, late_fee_warning: lateFee });
+      }),
+  );
+
+  server.registerTool(
+    "join_waitlist",
+    {
+      title: "Join the waitlist",
+      description: "Join the waitlist for a service at a business during a spoken time window (e.g. 'thursday after work'). Idempotent: joining again for the same window just confirms the existing entry.",
+      inputSchema: {
+        business_id: z.string(),
+        service_id: z.string(),
+        when: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        waitlist_id: z.string(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ business_id, service_id, when }) =>
+      guarded(() => {
+        const business = requireBusiness(store, business_id);
+        const service = requireService(business, service_id);
+        const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
+        const window = parseSpokenWindow(when ?? "", nowBiz);
+        const entry = joinWaitlist(store, ctx.nowMs, ctx.customerId, {
+          businessId: business.id,
+          serviceId: service.id,
+          window,
+        });
+        const speech = `You're on the waitlist for ${service.name} at ${business.name}, ${window.label}. I'll let you know if a spot opens up.`;
+        return ok(speech, { waitlist_id: entry.id });
+      }),
+  );
+}

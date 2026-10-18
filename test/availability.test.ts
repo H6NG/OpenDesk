@@ -70,7 +70,8 @@ describe("findAvailability", () => {
     });
     // 9:00-9:30 booked + 5min buffer -> next slot must start at/after 9:35.
     for (const s of slots) {
-      const startMin = DateTime.fromISO(s.start).hour * 60 + DateTime.fromISO(s.start).minute;
+      const d = DateTime.fromISO(s.start, { setZone: true });
+      const startMin = d.hour * 60 + d.minute;
       assert.ok(startMin >= 9 * 60 + 35 || startMin + 30 <= 9 * 60);
     }
   });
