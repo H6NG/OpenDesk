@@ -161,8 +161,14 @@ export function markOrderReady(store: Store, nowMs: number, orderId: string): Ma
   store.touch();
   const message = `Your order for ${order.quantity} ${order.productName} at ${business.name} is ready for pickup.`;
   store.addEvent(business.id, "order_ready", `${order.customerName}'s order for ${order.productName} is ready, code ${order.code}`);
-  const customerPhone = store.getCustomer(order.customerId)?.phone || null;
-  notify(message, { kind: "order_ready", orderId: order.id, customerPhone, customerName: order.customerName });
+  const orderCustomer = store.getCustomer(order.customerId);
+  notify(message, {
+    kind: "order_ready",
+    orderId: order.id,
+    customerPhone: orderCustomer?.phone || null,
+    customerName: order.customerName,
+    smsConsent: orderCustomer?.smsConsent === true,
+  });
 
   return { order, business };
 }

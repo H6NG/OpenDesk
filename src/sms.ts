@@ -66,11 +66,20 @@ export async function sendSms(to: string, body: string, config: SmsConfig): Prom
  * isn't configured or the send fails. A notification is a side effect of a
  * booking/reminder/order flow that already succeeded; a notification
  * failure shouldn't take that flow down with it.
+ *
+ * Gated on `context.smsConsent`: unlike ConsoleNotificationSink (which
+ * never leaves the server, so consent is moot), this sink actually texts
+ * the customer, so it must not fire without their explicit opt-in — see
+ * the set_sms_consent MCP tool.
  */
 export class SmsNotificationSink implements NotificationSink {
   constructor(private config: SmsConfig) {}
 
   async notify(message: string, context: NotificationContext): Promise<void> {
+    if (!context.smsConsent) {
+      console.log(`[sms] no SMS consent on file for ${context.customerName}; not sending: ${message}`);
+      return;
+    }
     if (!context.customerPhone) {
       console.log(`[sms] no phone on file for ${context.customerName}; logging instead: ${message}`);
       return;

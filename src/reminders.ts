@@ -13,6 +13,8 @@ export interface NotificationContext {
   /** Null when the customer has no phone on file; sinks that need a destination (e.g. SMS) should skip and log rather than throw. */
   customerPhone: string | null;
   customerName: string;
+  /** Explicit SMS opt-in on file for this customer. A sink that actually reaches the customer externally (e.g. SMS) must not send unless this is true — ConsoleNotificationSink is exempt since it never leaves the server. */
+  smsConsent: boolean;
 }
 
 export interface NotificationSink {
@@ -78,8 +80,8 @@ function fire(
   appt[field] = isoUtc(nowMs);
   store.touch();
   store.addEvent(appt.businessId, "reminder_sent", message);
-  const customerPhone = store.getCustomer(appt.customerId)?.phone || null;
-  notify(message, { kind, appointmentId: appt.id, customerPhone, customerName: appt.customerName });
+  const customer = store.getCustomer(appt.customerId);
+  notify(message, { kind, appointmentId: appt.id, customerPhone: customer?.phone || null, customerName: appt.customerName, smsConsent: customer?.smsConsent === true });
 }
 
 function holdExpiringMessage(store: Store, appt: { businessId: string; customerName: string }): string {

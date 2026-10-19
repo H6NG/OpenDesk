@@ -64,6 +64,10 @@ export interface Customer {
   id: string;
   name: string;
   phone: string;
+  /** Explicit opt-in for SMS reminders/notifications (TCPA-style consent). Undefined/false means no consent — SmsNotificationSink must not text them. */
+  smsConsent?: boolean;
+  /** When smsConsent was last changed, for an audit trail. */
+  smsConsentUpdatedAt?: string | null;
 }
 
 export type AppointmentStatus = "held" | "confirmed" | "cancelled" | "expired";

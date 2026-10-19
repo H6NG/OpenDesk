@@ -1,4 +1,4 @@
-# Final Report — dev branch stretch features (Phases 11-20)
+# Final Report — dev branch stretch features (Phases 11-21)
 
 This is the dev-branch continuation of "Front Desk," building on top of the
 frozen main-branch submission (Phases 0-10, documented in PROGRESS.md and
@@ -10,17 +10,19 @@ user-requested additions made after SPEC_DEV.md was finished: Phase 16
 (French voice support), Phase 17 (a closed-day alternatives fix, plus a
 stock-tracked item/order catalog for businesses that sell goods, not just
 appointment time), Phase 18 (group bookings), Phase 19 (staff time-off
-blocks), and Phase 20 (order-ready notifications plus real, pluggable SMS
-delivery). Deposits/prepayment for no-show-prone bookings was proposed
-alongside 18-20 but explicitly deferred — it needs a real PCI/compliance
-conversation with the project owner, same reasoning as the other
-out-of-scope items below. See PROGRESS_DEV.md for the full phase-by-phase
-log, including every design decision and scope cut, with reasoning. Nothing
-was left "explicitly out of scope" from SPEC_DEV.md's own out-of-scope list
-(real payments, multi-location businesses, a standalone customer portal) —
-none of these phases touched any of those.
+blocks), Phase 20 (order-ready notifications plus real, pluggable SMS
+delivery), and Phase 21 (SMS consent/opt-out tracking, so Phase 20's real
+delivery path can't text anyone without their explicit opt-in).
+Deposits/prepayment for no-show-prone bookings was proposed alongside
+18-20 but explicitly deferred — it needs a real PCI/compliance conversation
+with the project owner, same reasoning as the other out-of-scope items
+below. See PROGRESS_DEV.md for the full phase-by-phase log, including every
+design decision and scope cut, with reasoning. Nothing was left "explicitly
+out of scope" from SPEC_DEV.md's own out-of-scope list (real payments,
+multi-location businesses, a standalone customer portal) — none of these
+phases touched any of those.
 
-## Full `npm test` output (139/139 passing)
+## Full `npm test` output (144/144 passing)
 
 ```
 > front-desk@0.1.0 test
@@ -157,14 +159,19 @@ ok 10 - markOrderReady / markOrderPickedUp
         ok 2 - rejects a group too large for the business's staff
         1..2
     ok 14 - Phase 18: group bookings
+    # Subtest: Phase 21: SMS consent
+        # Subtest: opts in and back out, idempotently
+        ok 1 - opts in and back out, idempotently
+        1..1
+    ok 15 - Phase 21: SMS consent
     # Subtest: Phase 17: item catalog / orders
         # Subtest: checks availability, orders, lists, and cancels an item order
         ok 1 - checks availability, orders, lists, and cancels an item order
         # Subtest: reports out of stock and rejects ordering more than is in stock
         ok 2 - reports out of stock and rejects ordering more than is in stock
         1..2
-    ok 15 - Phase 17: item catalog / orders
-    1..15
+    ok 16 - Phase 17: item catalog / orders
+    1..16
 ok 11 - e2e: none mode
 # Subtest: e2e: oauth mode
     # Subtest: part 1b: two linked customers
@@ -288,14 +295,25 @@ ok 22 - smsConfigured
     1..3
 ok 23 - sendSms
 # Subtest: SmsNotificationSink
-    # Subtest: sends via the configured client when the customer has a phone on file
-    ok 1 - sends via the configured client when the customer has a phone on file
+    # Subtest: sends via the configured client when the customer has a phone on file and has consented
+    ok 1 - sends via the configured client when the customer has a phone on file and has consented
+    # Subtest: logs instead of sending when the customer hasn't consented, even with a phone on file
+    ok 2 - logs instead of sending when the customer hasn't consented, even with a phone on file
     # Subtest: logs instead of sending when the customer has no phone on file
-    ok 2 - logs instead of sending when the customer has no phone on file
+    ok 3 - logs instead of sending when the customer has no phone on file
     # Subtest: logs rather than throwing when the send fails
-    ok 3 - logs rather than throwing when the send fails
-    1..3
+    ok 4 - logs rather than throwing when the send fails
+    1..4
 ok 24 - SmsNotificationSink
+# Subtest: Store.setSmsConsent
+    # Subtest: records opt-in with a timestamp, defaulting to no consent beforehand
+    ok 1 - records opt-in with a timestamp, defaulting to no consent beforehand
+    # Subtest: records opt-out just as well
+    ok 2 - records opt-out just as well
+    # Subtest: returns undefined for an unknown customer
+    ok 3 - returns undefined for an unknown customer
+    1..3
+ok 25 - Store.setSmsConsent
 # Subtest: parseSpokenWindow
     # Subtest: "thursday after work" -> 10-22, band [1020,1260]
     ok 1 - "thursday after work" -> 10-22, band [1020,1260]
@@ -322,7 +340,7 @@ ok 24 - SmsNotificationSink
     # Subtest: "8am" -> rolls to 10-19
     ok 12 - "8am" -> rolls to 10-19
     1..12
-ok 25 - parseSpokenWindow
+ok 26 - parseSpokenWindow
 # Subtest: parseSpokenWindow: Spanish equivalents resolve to the same windows
     # Subtest: "el jueves después del trabajo" -> 10-22, band [1020,1260]
     ok 1 - "el jueves después del trabajo" -> 10-22, band [1020,1260]
@@ -349,7 +367,7 @@ ok 25 - parseSpokenWindow
     # Subtest: "8am" -> rolls to 10-19 (digits parse the same in both locales)
     ok 12 - "8am" -> rolls to 10-19 (digits parse the same in both locales)
     1..12
-ok 26 - parseSpokenWindow: Spanish equivalents resolve to the same windows
+ok 27 - parseSpokenWindow: Spanish equivalents resolve to the same windows
 # Subtest: parseSpokenWindow: French equivalents resolve to the same windows
     # Subtest: "jeudi après le travail" -> 10-22, band [1020,1260]
     ok 1 - "jeudi après le travail" -> 10-22, band [1020,1260]
@@ -376,7 +394,7 @@ ok 26 - parseSpokenWindow: Spanish equivalents resolve to the same windows
     # Subtest: "8am" -> rolls to 10-19 (digits parse the same in every locale)
     ok 12 - "8am" -> rolls to 10-19 (digits parse the same in every locale)
     1..12
-ok 27 - parseSpokenWindow: French equivalents resolve to the same windows
+ok 28 - parseSpokenWindow: French equivalents resolve to the same windows
 # Subtest: speakDateTime
     # Subtest: formats tomorrow
     ok 1 - formats tomorrow
@@ -397,7 +415,7 @@ ok 27 - parseSpokenWindow: French equivalents resolve to the same windows
     # Subtest: formats a date far enough out to need the full form in French
     ok 9 - formats a date far enough out to need the full form in French
     1..9
-ok 28 - speakDateTime
+ok 29 - speakDateTime
 # Subtest: addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
     # Subtest: adds a block, lists only future/ongoing ones, and removes it
     ok 1 - adds a block, lists only future/ongoing ones, and removes it
@@ -408,23 +426,23 @@ ok 28 - speakDateTime
     # Subtest: removing an unknown id throws
     ok 4 - removing an unknown id throws
     1..4
-ok 29 - addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
+ok 30 - addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
 # Subtest: staff time-off integrated into availability
     # Subtest: excludes a blocked staff member from findAvailability during their time off
     ok 1 - excludes a blocked staff member from findAvailability during their time off
     # Subtest: isSlotFree returns false during a blocked staff member's time off
     ok 2 - isSlotFree returns false during a blocked staff member's time off
     1..2
-ok 30 - staff time-off integrated into availability
-1..30
-# tests 139
-# suites 37
-# pass 139
+ok 31 - staff time-off integrated into availability
+1..31
+# tests 144
+# suites 39
+# pass 144
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 7336.810333
+# duration_ms 7375.839083
 ```
 
 `npm run build` (`tsc -p tsconfig.json`) also compiles clean with zero errors.
@@ -485,6 +503,12 @@ ok 30 - staff time-off integrated into availability
   configured, falling back to the existing console sink otherwise — same
   "implement it for real, fail cleanly without live credentials" pattern
   Phase 6 used for Bedrock.
+- **Phase 21 — SMS consent/opt-out tracking** (user-requested, after
+  SPEC_DEV.md): a customer must explicitly opt in via the new
+  `set_sms_consent` tool before `SmsNotificationSink` will ever text them
+  — a phone number on file is never enough on its own. Closes a real
+  compliance gap Phase 20 opened: once real SMS delivery exists, texting
+  without consent is a TCPA risk, not just a demo shortcut.
 
 See PROGRESS_DEV.md's Log section for the full design rationale, every
 ambiguity encountered, and exactly how each was resolved.
@@ -688,6 +712,25 @@ injectable stub, same pattern as `setBedrockClient`) and the
 configured-vs-unconfigured/success-vs-failure paths without ever making a
 real network call; `test/catalog.test.ts`'s `markOrderReady` suite covers
 the status transition and notification firing.
+
+### Phase 21 — SMS consent/opt-out tracking
+
+Via an MCP client:
+
+```
+set_sms_consent { opt_in: true }
+```
+
+Speech confirms: "Got it, I'll text you reminders and order updates." From
+that point on, `SmsNotificationSink` will actually text that customer when
+`TWILIO_*` is configured (see Phase 20); without this call first, it logs
+"no SMS consent on file" and refuses to send even with a real phone number
+and real credentials. Call it again with `opt_in: false` to unsubscribe —
+speech confirms "Got it, I won't text you anymore." Manually verified
+against a live server: both directions returned the correct `sms_consent`
+value and speech. `test/sms.test.ts` covers `Store.setSmsConsent` and the
+`SmsNotificationSink` consent gate directly; the "Phase 21: SMS consent"
+e2e suite drives the actual tool round trip.
 
 ## Known sandbox limitations (not bugs)
 

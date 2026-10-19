@@ -338,6 +338,21 @@ describe("e2e: none mode", () => {
     });
   });
 
+  describe("Phase 21: SMS consent", () => {
+    it("opts in and back out, idempotently", async () => {
+      const optIn = await timedCallTool(client, "set_sms_consent", { opt_in: true });
+      assert.equal(optIn.isError, undefined);
+      assert.equal(optIn.structuredContent!.sms_consent, true);
+
+      const optInAgain = await timedCallTool(client, "set_sms_consent", { opt_in: true });
+      assert.equal(optInAgain.structuredContent!.sms_consent, true);
+
+      const optOut = await timedCallTool(client, "set_sms_consent", { opt_in: false });
+      assert.equal(optOut.structuredContent!.sms_consent, false);
+      assert.match(optOut.structuredContent!.speech as string, /won't text you/);
+    });
+  });
+
   describe("Phase 17: item catalog / orders", () => {
     it("checks availability, orders, lists, and cancels an item order", async () => {
       const check = await timedCallTool(client, "check_item_availability", { business_id: "shop-a", item: "Pomade" });

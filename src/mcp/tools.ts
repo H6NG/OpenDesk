@@ -56,7 +56,9 @@ Never call confirm_appointment without the customer explicitly saying yes to the
 
 For a group (e.g. "3 kids' haircuts" or "me and a friend"), pass party on hold_appointment: every attendee gets their own linked appointment at the same start time, usually with a different staff member, booked atomically (all or none). Mutually exclusive with recurrence.
 
-Some businesses also sell stock-tracked physical items or dishes (not appointment slots). Use check_item_availability to see if something's in stock, order_item to place an order for pickup (no hold/confirm step needed — it's not time-slotted), and list_my_orders/cancel_order to manage existing orders.`;
+Some businesses also sell stock-tracked physical items or dishes (not appointment slots). Use check_item_availability to see if something's in stock, order_item to place an order for pickup (no hold/confirm step needed — it's not time-slotted), and list_my_orders/cancel_order to manage existing orders.
+
+Text reminders and order-ready alerts are opt-in. The first time a customer confirms a booking or places an order, ask if they'd like text updates, and call set_sms_consent with their answer. Never assume consent just because a phone number is on file. If a customer asks to stop getting texts at any point, call set_sms_consent with opt_in: false right away.`;
 
 function ok(speech: string, data: Record<string, unknown>): CallToolResult {
   return {
@@ -737,6 +739,32 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         const locale: Locale = business.locale ?? "en";
         const speech = alreadyCancelled ? sayOrderAlreadyCancelled(locale) : sayOrderCancelled(locale);
         return ok(speech, { cancelled: true });
+      }),
+  );
+
+  server.registerTool(
+    "set_sms_consent",
+    {
+      title: "Set SMS notification consent",
+      description:
+        "Record whether the customer wants text message notifications (hold-expiring reminders, upcoming-appointment reminders, order-ready alerts). Ask explicitly before opting someone in — never assume consent from a phone number alone. Also use this if the customer asks to stop getting texts.",
+      inputSchema: {
+        opt_in: z.boolean().describe("true to opt into SMS notifications, false to opt out / unsubscribe"),
+      },
+      outputSchema: {
+        speech: z.string(),
+        sms_consent: z.boolean(),
+      },
+      // No single business is in play here (consent is per-customer, not per-business), so — same reasoning as
+      // find_businesses — this stays English-only; see PROGRESS_DEV.md.
+      annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ opt_in }) =>
+      guarded(() => {
+        const customer = store.setSmsConsent(ctx.customerId, opt_in, ctx.nowMs);
+        if (!customer) return fail("I couldn't find your account.");
+        const speech = opt_in ? "Got it, I'll text you reminders and order updates." : "Got it, I won't text you anymore.";
+        return ok(speech, { sms_consent: customer.smsConsent === true });
       }),
   );
 }

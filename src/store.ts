@@ -135,6 +135,16 @@ export class Store {
     return this.data.customers.find((c) => c.phone === phone);
   }
 
+  /** Records explicit SMS opt-in/out, with a timestamp for an audit trail. Returns undefined if the customer doesn't exist. */
+  setSmsConsent(customerId: string, consent: boolean, nowMs: number): Customer | undefined {
+    const customer = this.getCustomer(customerId);
+    if (!customer) return undefined;
+    customer.smsConsent = consent;
+    customer.smsConsentUpdatedAt = isoUtc(nowMs);
+    this.touch();
+    return customer;
+  }
+
   upsertCustomerByPhone(name: string, phone: string): Customer {
     const existing = this.findCustomerByPhone(phone);
     if (existing) {

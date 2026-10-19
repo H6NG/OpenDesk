@@ -16,6 +16,7 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 - [x] Phase 18: group bookings (user-requested addition, after SPEC_DEV.md)
 - [x] Phase 19: staff time off (user-requested addition, after SPEC_DEV.md)
 - [x] Phase 20: order-ready notifications + real pluggable SMS delivery (user-requested addition, after SPEC_DEV.md)
+- [x] Phase 21: SMS consent/opt-out tracking (user-requested addition, after SPEC_DEV.md)
 
 ## Explicitly out of scope (per SPEC_DEV.md — not attempted)
 
@@ -573,13 +574,56 @@ something to default into autonomously.
   group e2e + 6 staff-time-off + 7 sms + 3 markOrderReady/markOrderPickedUp,
   net +25).
 
+- Phase 21 (user-requested addition, after SPEC_DEV.md): SMS consent/opt-out
+  tracking, flagged as the single most clearly *necessary* item among a
+  list of options — once Phase 20 added a real SMS delivery path, texting a
+  customer without their explicit consent became a live TCPA compliance
+  risk the moment real Twilio credentials get configured, not just a demo
+  gap. `src/types.ts` — `Customer` gained `smsConsent?: boolean` and
+  `smsConsentUpdatedAt?: string | null`, both optional so every existing
+  `Customer` literal across the codebase (seed data, the demo customer,
+  `upsertCustomerByPhone`, the phone-less walk-in path) keeps compiling
+  unchanged, with undefined/missing meaning "no consent" — opt-out by
+  default, matching how TCPA consent is supposed to work (never assume
+  consent from a phone number being on file). `src/store.ts` — new
+  `Store.setSmsConsent(customerId, consent, nowMs)`, alongside the
+  existing customer-lookup methods, recording a timestamp for an audit
+  trail. `src/reminders.ts` — `NotificationContext` gained a required
+  `smsConsent: boolean` field; `fire()` now resolves it from the
+  customer record alongside the phone number it already resolved.
+  `src/catalog.ts` — `markOrderReady` does the same. `src/sms.ts` —
+  `SmsNotificationSink.notify()` checks `smsConsent` *before* the
+  phone-number check and refuses to send (logging instead, not throwing —
+  same "don't take down the flow that triggered this" reasoning as the
+  rest of the sink) when it's false; deliberately **not** gated in
+  `ConsoleNotificationSink`, since that sink never leaves the server, so
+  consent is moot for it — only a sink that actually reaches the customer
+  externally needs the gate. New MCP tool `set_sms_consent` (`opt_in:
+  boolean`): no business is in play (consent is per-customer, not
+  per-business), so — same reasoning as `find_businesses` — speech stays
+  English-only. `SERVER_INSTRUCTIONS` updated to tell the model to ask
+  explicitly the first time a customer books/orders, never assume consent
+  from a phone number, and to opt a customer out immediately if they ask
+  to stop getting texts. New tests: `test/sms.test.ts` gained a
+  `Store.setSmsConsent` suite (3 tests) and the existing
+  `SmsNotificationSink` tests were updated/extended for the consent gate
+  (a new test asserts it logs-not-sends when consent is false even with a
+  phone on file); a new "Phase 21: SMS consent" e2e suite (1 test:
+  opt-in/opt-out round trip, idempotent). Manually verified against a live
+  server: `set_sms_consent { opt_in: true }` and `{ opt_in: false }` both
+  returned the correct `sms_consent` value and speech.
+  `npm run build` clean; `npm test` 144/144 (139 prior + 1 new
+  consent-gate test in an existing suite + 3 Store.setSmsConsent + 1 e2e,
+  net +5).
+
 ## Next step
 
 None — every phase in SPEC_DEV.md (11-15) is complete, plus the
-user-requested Phases 16-20 (French voice support; closed-day alternatives
+user-requested Phases 16-21 (French voice support; closed-day alternatives
 fix + item catalog/orders; group bookings; staff time off; order-ready
-notifications + real pluggable SMS delivery). Deposits/prepayment for
-no-show-prone bookings was proposed and deferred again (needs a real
-PCI/compliance conversation, not an autonomous decision). `npm test`
-passes in full (139/139). See FINAL_REPORT_DEV.md for the full test output
-and manual how-to-exercise notes for each feature, and DONE_DEV.
+notifications + real pluggable SMS delivery; SMS consent/opt-out
+tracking). Deposits/prepayment for no-show-prone bookings was proposed and
+deferred again (needs a real PCI/compliance conversation, not an
+autonomous decision). `npm test` passes in full (144/144). See
+FINAL_REPORT_DEV.md for the full test output and manual how-to-exercise
+notes for each feature, and DONE_DEV.
