@@ -6,6 +6,7 @@ import type { Config } from "./config.js";
 import type { Store } from "./store.js";
 import { now } from "./clock.js";
 import { onboardBusiness, dailyBriefing } from "./bedrock.js";
+import { BookingError, createManualAppointment } from "./booking.js";
 import type { Business } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -76,6 +77,42 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       waitlist,
       mcpEndpoint: `${config.publicUrl.replace(/\/$/, "")}/mcp`,
     });
+  });
+
+  app.post("/api/appointments", ...api, (req, res) => {
+    const body = req.body ?? {};
+    const { businessId, serviceId, staffId, customerName, customerPhone, start, source, notes } = body;
+    if (
+      typeof businessId !== "string" ||
+      typeof serviceId !== "string" ||
+      typeof staffId !== "string" ||
+      typeof customerName !== "string" ||
+      !customerName.trim() ||
+      typeof start !== "string" ||
+      (source !== "phone" && source !== "walk-in")
+    ) {
+      res.status(400).json({ error: "businessId, serviceId, staffId, customerName, start, and source ('phone'|'walk-in') are required." });
+      return;
+    }
+    try {
+      const { appointment } = createManualAppointment(store, now().toMillis(), {
+        businessId,
+        serviceId,
+        staffId,
+        customerName,
+        customerPhone: typeof customerPhone === "string" && customerPhone.trim() ? customerPhone : undefined,
+        startIso: start,
+        source,
+        notes: typeof notes === "string" ? notes : undefined,
+      });
+      res.status(201).json({ appointment });
+    } catch (e) {
+      if (e instanceof BookingError) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      res.status(500).json({ error: "Could not create the appointment." });
+    }
   });
 
   app.get("/api/events", ...api, (req, res) => {

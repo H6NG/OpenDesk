@@ -8,7 +8,7 @@ import {
 } from "./availability.js";
 import { newId, randomCode } from "./codes.js";
 import type { Store } from "./store.js";
-import type { Appointment, Business, Service, Staff, WaitlistEntry } from "./types.js";
+import type { Appointment, AppointmentSource, Business, Customer, Service, Staff, WaitlistEntry } from "./types.js";
 
 export class BookingError extends Error {
   constructor(message: string) {
@@ -160,6 +160,91 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
     if (entry) entry.status = "fulfilled";
   }
   store.addEvent(business.id, "booked", `${appointment.customerName} booked ${service.name} with ${staff.name}, code ${appointment.code}`);
+
+  return { appointment, business, service, staff };
+}
+
+export interface ManualBookResult {
+  appointment: Appointment;
+  business: Business;
+  service: Service;
+  staff: Staff;
+}
+
+/**
+ * Creates a confirmed appointment directly, for a staff member taking a
+ * phone call or walk-in — no hold step, since a human (not the 5-minute
+ * voice hold) is doing the booking in real time.
+ */
+export function createManualAppointment(
+  store: Store,
+  nowMs: number,
+  params: {
+    businessId: string;
+    serviceId: string;
+    staffId: string;
+    customerName: string;
+    customerPhone?: string;
+    startIso: string;
+    source: AppointmentSource;
+    notes?: string;
+  },
+): ManualBookResult {
+  const business = requireBusiness(store, params.businessId);
+  const service = requireService(business, params.serviceId);
+  const staff = business.staff.find((s) => s.id === params.staffId);
+  if (!staff) throw new BookingError(`I couldn't find that staff member at ${business.name}.`);
+  if (!staffCanPerform(staff, service.id)) {
+    throw new BookingError(`${staff.name} doesn't perform ${service.name} at ${business.name}.`);
+  }
+
+  const startMs = Date.parse(params.startIso);
+  if (Number.isNaN(startMs)) throw new BookingError("I couldn't understand that start time.");
+  if (!fitsBusinessHours(business, startMs, service.durationMin)) {
+    throw new BookingError(`${business.name} is closed then.`);
+  }
+  if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs)) {
+    throw new BookingError("That slot is already booked for that staff member.");
+  }
+
+  const customer: Customer = params.customerPhone
+    ? store.upsertCustomerByPhone(params.customerName, params.customerPhone)
+    : (() => {
+        const c: Customer = { id: newId("cust"), name: params.customerName, phone: "" };
+        store.data.customers.push(c);
+        store.touch();
+        return c;
+      })();
+
+  const start = DateTime.fromMillis(startMs, { zone: business.timezone });
+  const end = start.plus({ minutes: service.durationMin });
+  const nowIso = isoUtc(nowMs);
+
+  const appointment: Appointment = {
+    id: newId("appt"),
+    code: randomCode(),
+    businessId: business.id,
+    serviceId: service.id,
+    staffId: staff.id,
+    customerId: customer.id,
+    customerName: customer.name,
+    start: start.toISO()!,
+    end: end.toISO()!,
+    status: "confirmed",
+    holdExpiresAt: null,
+    holdKind: null,
+    source: params.source,
+    notes: params.notes ?? "",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  store.data.appointments.push(appointment);
+  store.touch();
+  store.addEvent(
+    business.id,
+    "booked",
+    `${appointment.customerName} booked ${service.name} with ${staff.name} by ${params.source}, code ${appointment.code}`,
+  );
 
   return { appointment, business, service, staff };
 }

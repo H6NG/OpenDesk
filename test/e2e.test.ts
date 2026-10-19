@@ -201,6 +201,64 @@ describe("e2e: none mode", () => {
     assert.equal(res.status, 405);
     assert.equal(res.headers.get("allow"), "POST");
   });
+
+  describe("Phase 11: manual booking", () => {
+    it("POST /api/appointments creates a confirmed walk-in appointment and logs an activity event", async () => {
+      const res = await fetch(`${server.baseUrl}/api/appointments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessId: "shop-a",
+          serviceId: "cut",
+          staffId: "sam",
+          customerName: "Walk-in Wanda",
+          start: "2026-10-20T15:00:00.000-07:00",
+          source: "walk-in",
+        }),
+      });
+      assert.equal(res.status, 201);
+      const { appointment } = await res.json();
+      assert.equal(appointment.status, "confirmed");
+      assert.equal(appointment.source, "walk-in");
+      assert.equal(appointment.holdExpiresAt, null);
+
+      const eventsRes = await fetch(`${server.baseUrl}/api/state?business=shop-a&days=7`);
+      const stateBody = await eventsRes.json();
+      assert.ok(stateBody.appointments.some((a: { id: string }) => a.id === appointment.id));
+    });
+
+    it("rejects a double-booked slot for the same staff member", async () => {
+      const first = await fetch(`${server.baseUrl}/api/appointments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessId: "shop-a",
+          serviceId: "cut",
+          staffId: "priya",
+          customerName: "Phone Phil",
+          start: "2026-10-20T16:00:00.000-07:00",
+          source: "phone",
+        }),
+      });
+      assert.equal(first.status, 201);
+
+      const second = await fetch(`${server.baseUrl}/api/appointments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessId: "shop-a",
+          serviceId: "cut",
+          staffId: "priya",
+          customerName: "Someone Else",
+          start: "2026-10-20T16:00:00.000-07:00",
+          source: "phone",
+        }),
+      });
+      assert.equal(second.status, 400);
+      const body = await second.json();
+      assert.match(body.error, /already booked/i);
+    });
+  });
 });
 
 describe("e2e: oauth mode", () => {
@@ -262,6 +320,36 @@ describe("e2e: oauth mode", () => {
 
       await clientA.close();
       await clientB.close();
+    });
+  });
+
+  describe("Phase 11: manual booking visible to linked customer", () => {
+    it("a manual booking with a matching phone shows up in that customer's list_my_appointments", async () => {
+      const phone = "+1-555-0777";
+      const tokens = await linkCustomer(server.baseUrl, "Linked Customer", phone);
+      const client = await newClient(server.baseUrl, tokens.accessToken);
+
+      const res = await fetch(`${server.baseUrl}/api/appointments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          businessId: "shop-b",
+          serviceId: "groom",
+          staffId: "jess",
+          customerName: "Linked Customer",
+          customerPhone: phone,
+          start: "2026-10-21T10:00:00.000-07:00",
+          source: "phone",
+        }),
+      });
+      assert.equal(res.status, 201);
+
+      const list = await timedCallTool(client, "list_my_appointments", {});
+      const appts = list.structuredContent!.appointments as { code: string }[];
+      const { appointment } = await res.json();
+      assert.ok(appts.some((a) => a.code === appointment.code));
+
+      await client.close();
     });
   });
 
