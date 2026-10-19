@@ -7,6 +7,7 @@ import type { Store } from "./store.js";
 import { now } from "./clock.js";
 import { onboardBusiness, dailyBriefing } from "./bedrock.js";
 import { BookingError, createManualAppointment } from "./booking.js";
+import { computeAnalytics } from "./analytics.js";
 import type { Business } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,6 +119,17 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       }
       res.status(500).json({ error: "Could not create the appointment." });
     }
+  });
+
+  app.get("/api/analytics", ...api, (req, res) => {
+    const businessId = (req.query.business as string | undefined) ?? store.data.businesses[0]?.id;
+    const days = Math.max(1, Math.min(90, Number(req.query.days ?? 30) || 30));
+    const business = businessId ? store.getBusiness(businessId) : undefined;
+    if (!business) {
+      res.status(404).json({ error: "Unknown business." });
+      return;
+    }
+    res.json(computeAnalytics(store, business.id, now().toMillis(), days));
   });
 
   app.get("/api/events", ...api, (req, res) => {

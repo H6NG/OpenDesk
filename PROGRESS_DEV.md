@@ -9,7 +9,7 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 - [x] Phase 11: Manual / walk-in booking from the dashboard
 - [x] Phase 12: Reminder notifications
 - [x] Phase 13: Recurring appointments
-- [ ] Phase 14: Dashboard analytics
+- [x] Phase 14: Dashboard analytics
 - [ ] Phase 15: Spanish voice support (lower priority, last)
 
 ## Log
@@ -135,6 +135,53 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   `npm run build` clean; `npm test` 64/64 (57 prior + 1 unit-test-file worth
   of 6 + 1 e2e).
 
+- Phase 14: dashboard analytics. Loaded the `dataviz` skill first per
+  SPEC_DEV.md. New `src/analytics.ts` — pure `computeAnalytics(store,
+  businessId, nowMs, days)`, no new infrastructure, just aggregation over
+  `store.data.appointments`: `bookingsByHour` (24 buckets, excludes
+  cancelled/expired), `revenueByDay` (confirmed-only, zero-filled for every
+  day in the window so the chart never has gaps), `sourceSplit` (counts by
+  `alexa`/`phone`/`walk-in`, excludes cancelled/expired), and a no-show-rate
+  proxy (see ambiguity below). The window looks *backward* from `nowMs`
+  (`nowBiz.minus({days}).startOf("day")` through `nowBiz`) since revenue and
+  no-show rate are inherently historical, unlike `/api/state`'s
+  forward-looking window. `src/dashboard.ts` — new `GET /api/analytics?
+  business=&days=` (default 30, capped at 90), 404 on an unknown business.
+  `public/dashboard.html` — new "Analytics" card directly below the
+  briefing panel: a no-show-rate stat tile, a bookings-by-hour bar chart, a
+  revenue-by-day bar chart, and a bookings-by-channel breakdown (3
+  horizontal bars, each directly labeled with its channel name and count,
+  not just color — see palette note below). All three charts are plain
+  inline SVG/HTML built the same way the existing timeline renders
+  (template-string functions, no chart library), reusing the dashboard's
+  existing `--voice`/`--hold`/`--offer` CSS variables so light/dark mode
+  keep working for free. Ran `scripts/validate_palette.js` from the dataviz
+  skill against this trio: CVD separation and contrast both pass in light
+  and dark, but `--voice` fails the chroma floor (reads a little
+  desaturated) and both modes have at least one color outside the ideal
+  lightness band. SPEC_DEV.md explicitly mandates reusing this exact
+  established palette rather than swapping it for a fresh one, so I kept it
+  and relied on the validator's own allowance: "CVD in the 6-8 floor band
+  is legal ONLY with secondary encoding" — every chart segment here is
+  directly labeled with text (hour/day labels, channel name + count), never
+  color-alone. New `test/analytics.test.ts` (2 tests) hand-computes the
+  exact expected numbers on a 7-appointment fixture (confirmed, cancelled
+  late, cancelled with full notice, held, expired, and one appointment
+  outside the window) and asserts every bucket and the no-show
+  rate/sample-size exactly; a second test covers the zero-sample case.
+  New e2e test in `test/e2e.test.ts` (none-mode) hits the live
+  `GET /api/analytics` endpoint and checks the response shape. Manually
+  smoke-tested against a live server: POSTed a manual walk-in appointment
+  dated slightly in the past (relative to a later `FRONTDESK_NOW`) and
+  confirmed `/api/analytics` picked it up correctly in `bookingsByHour`,
+  `sourceSplit`, and `revenueByDay`. Also checked the dashboard script's
+  syntax is valid (`node --check`) but could not visually render the chart
+  in an actual browser — no headless browser (Chromium/Puppeteer/Playwright)
+  is available in this sandbox; this is a sandbox limitation, not a design
+  choice, same category as the no-Docker/no-AWS gaps noted in the original
+  FINAL_REPORT.md.
+  `npm run build` clean; `npm test` 67/67 (64 prior + 2 unit + 1 e2e).
+
 ## Known issues / ambiguities
 
 - Manual bookings skip the `leadTimeMin` check that voice bookings enforce
@@ -163,8 +210,24 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   time delta as the target occurrence's move (see Phase 13 log entry above
   for the reasoning); SPEC_DEV.md doesn't spell out the intended semantics
   for "reschedule the whole series" given only one new `new_start`.
+- No-show rate proxy (Phase 14): SPEC_DEV.md's sentence describing this
+  metric is truncated mid-thought ("confirmed appointments whose `end` has
+  passed with no corresponding... treat 'cancelled after notice window' as
+  proxy"). I implemented it as: of every past appointment that was ever
+  confirmed or cancelled, what fraction were cancelled *inside* the
+  business's `cancelNoticeHours` window (a late cancellation, using
+  `updatedAt` as the cancellation timestamp since a cancelled appointment
+  is never mutated again) — on the theory that a last-minute cancellation
+  is operationally the closest thing this system has to a no-show, since
+  the business had no time to refill the slot either way.
+- The randomized demo seed (`seed.ts`) only ever creates *future* bookings
+  (the next 14 days from boot), so a freshly-booted demo server's analytics
+  panel will show all zeros until either real time passes past some of
+  those bookings or new bookings are made for a time at/before "now" (as
+  the manual smoke test above did). This is expected, not a bug — there's
+  no history to report yet.
 
 ## Next step
 
-Phase 14: dashboard analytics (`GET /api/analytics`, 2-3 charts below the
-briefing panel, aggregation-math tests). Load the `dataviz` skill first.
+Phase 15 (lower priority, last): Spanish voice support (`locale` field on
+Business, Spanish spokenTime/speech, chrono.es).

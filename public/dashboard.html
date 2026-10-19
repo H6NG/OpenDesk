@@ -155,6 +155,21 @@
   .activity-feed { max-height: 220px; overflow-y: auto; }
   .muted { color: var(--ink-soft); }
 
+  .analytics h2 { display: flex; align-items: baseline; justify-content: space-between; font-size: 1rem; }
+  .stat-tile { display: flex; align-items: baseline; gap: 0.4rem; margin: 0.3rem 0 0.7rem; }
+  .stat-tile .num { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.7rem; font-weight: 700; color: var(--ink); }
+  .chart-block { margin-bottom: 0.9rem; }
+  .chart-block h3 { font-size: 0.78rem; font-weight: 700; margin: 0 0 0.3rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.02em; }
+  .chart-svg { display: block; width: 100%; }
+  .chart-bar { transition: opacity 0.1s; }
+  .chart-bar:hover { opacity: 0.75; }
+  .chart-axis-label { font-size: 7px; fill: var(--ink-soft); font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+  .source-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.78rem; }
+  .source-row .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
+  .source-row .bar-track { flex: 1 1 auto; height: 10px; border-radius: 4px; background: var(--paper); overflow: hidden; }
+  .source-row .bar-fill { height: 100%; border-radius: 4px; }
+  .source-row .count { flex: 0 0 auto; color: var(--ink-soft); min-width: 1.4em; text-align: right; }
+
   .add-appt h2 { display: flex; align-items: center; justify-content: space-between; font-size: 1rem; }
   .add-appt h2 button { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
   .add-appt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
@@ -227,6 +242,11 @@
         <h2>Daily briefing</h2>
         <button id="briefing-btn">Get Bedrock briefing</button>
         <p class="muted" id="briefing-text">No briefing yet.</p>
+      </div>
+
+      <div class="card analytics">
+        <h2>Analytics <span class="muted" style="font-size:0.75rem">last 14 days</span></h2>
+        <div id="analytics-body"><p class="muted">Loading...</p></div>
       </div>
 
       <div class="card">
@@ -350,6 +370,70 @@
     renderTimeline();
     renderWaitlist();
     renderAddApptOptions();
+    loadAnalytics(businessId);
+  }
+
+  const ANALYTICS_DAYS = 14;
+  const CHART_COLORS = { alexa: "var(--voice)", phone: "var(--hold)", "walk-in": "var(--offer)" };
+  const SOURCE_LABELS = { alexa: "Voice (Alexa+)", phone: "Phone", "walk-in": "Walk-in" };
+
+  async function loadAnalytics(businessId) {
+    const body = document.getElementById("analytics-body");
+    try {
+      const data = await getJSON("/api/analytics?business=" + encodeURIComponent(businessId) + "&days=" + ANALYTICS_DAYS);
+      renderAnalytics(data);
+    } catch (e) {
+      body.innerHTML = '<p class="muted">Could not load analytics: ' + e.message + "</p>";
+    }
+  }
+
+  function barChartSvg(bars, opts) {
+    const w = 260, h = opts.height || 60;
+    const max = Math.max(1, ...bars.map((b) => b.value));
+    const barW = w / bars.length;
+    const rects = bars
+      .map((b, i) => {
+        const barH = (b.value / max) * (h - 12);
+        const x = i * barW;
+        const y = h - 12 - barH;
+        return `<rect class="chart-bar" x="${x + 0.5}" y="${y}" width="${Math.max(0, barW - 1)}" height="${Math.max(0, barH)}" fill="${opts.color}" rx="1.5"><title>${b.label}: ${b.value}</title></rect>`;
+      })
+      .join("");
+    const labels = bars
+      .map((b, i) => (b.showLabel ? `<text class="chart-axis-label" x="${i * barW + barW / 2}" y="${h - 1}" text-anchor="middle">${b.label}</text>` : ""))
+      .join("");
+    return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${rects}${labels}</svg>`;
+  }
+
+  function renderAnalytics(data) {
+    const body = document.getElementById("analytics-body");
+
+    const noShowPct = Math.round(data.noShowRate * 100);
+    const statTile = `<div class="stat-tile"><span class="num">${data.noShowSampleSize > 0 ? noShowPct + "%" : "–"}</span><span class="muted">no-show rate proxy (late cancellations), ${data.noShowSampleSize} past appt${data.noShowSampleSize === 1 ? "" : "s"}</span></div>`;
+
+    const hourBars = data.bookingsByHour.map((h) => ({
+      label: h.hour % 6 === 0 ? (h.hour === 0 ? "12a" : h.hour < 12 ? h.hour + "a" : h.hour === 12 ? "12p" : h.hour - 12 + "p") : "",
+      value: h.count,
+      showLabel: h.hour % 6 === 0,
+    }));
+    const hourChart = `<div class="chart-block"><h3>Bookings by hour of day</h3>${barChartSvg(hourBars, { color: "var(--voice)" })}</div>`;
+
+    const dayBars = data.revenueByDay.map((d) => {
+      const dt = new Date(d.date + "T00:00:00");
+      return { label: dt.toLocaleDateString(undefined, { day: "numeric" }), value: d.revenueCents / 100, showLabel: true };
+    });
+    const revenueChart = `<div class="chart-block"><h3>Revenue by day ($)</h3>${barChartSvg(dayBars, { color: "var(--hold)" })}</div>`;
+
+    const maxSourceCount = Math.max(1, ...data.sourceSplit.map((s) => s.count));
+    const sourceRows = data.sourceSplit
+      .map(
+        (s) =>
+          `<div class="source-row"><span class="swatch" style="background:${CHART_COLORS[s.source]}"></span><span>${SOURCE_LABELS[s.source]}</span><span class="bar-track"><span class="bar-fill" style="width:${(s.count / maxSourceCount) * 100}%;background:${CHART_COLORS[s.source]}"></span></span><span class="count">${s.count}</span></div>`,
+      )
+      .join("");
+    const sourceChart = `<div class="chart-block"><h3>Bookings by channel</h3>${sourceRows}</div>`;
+
+    body.innerHTML = statTile + hourChart + revenueChart + sourceChart;
   }
 
   function renderAddApptOptions() {

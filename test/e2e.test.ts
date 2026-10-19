@@ -196,6 +196,17 @@ describe("e2e: none mode", () => {
     assert.ok(Array.isArray(state.appointments));
   });
 
+  it("GET /api/analytics returns aggregated metrics for the business", async () => {
+    const res = await fetch(`${server.baseUrl}/api/analytics?business=shop-a&days=7`);
+    assert.equal(res.status, 200);
+    const analytics = await res.json();
+    assert.equal(analytics.businessId, "shop-a");
+    assert.equal(analytics.bookingsByHour.length, 24);
+    assert.ok(Array.isArray(analytics.revenueByDay));
+    assert.ok(Array.isArray(analytics.sourceSplit));
+    assert.ok(typeof analytics.noShowRate === "number");
+  });
+
   it("GET /mcp returns 405 with Allow: POST", async () => {
     const res = await fetch(`${server.baseUrl}/mcp`, { method: "GET" });
     assert.equal(res.status, 405);
