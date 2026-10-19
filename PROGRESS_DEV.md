@@ -7,7 +7,7 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 ## Phase plan
 
 - [x] Phase 11: Manual / walk-in booking from the dashboard
-- [ ] Phase 12: Reminder notifications
+- [x] Phase 12: Reminder notifications
 - [ ] Phase 13: Recurring appointments
 - [ ] Phase 14: Dashboard analytics
 - [ ] Phase 15: Spanish voice support (lower priority, last)
@@ -39,6 +39,35 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   customer linking from Phase 5 is reused correctly.
   `npm run build` clean; `npm test` 52/52 (49 original + 3 new).
 
+- Phase 12: `src/reminders.ts` — `NotificationSink` interface + `ConsoleNotificationSink`
+  (logs via `console.log`, since this sandbox has no SMS/push provider) +
+  `setNotificationSink()` for test injection, mirroring `setBedrockClient`.
+  `sweepReminders(store, nowMs)` checks every appointment once per sweep:
+  (a) a `held`/`holdKind: "customer"` hold past 80% of its TTL (computed
+  from `holdExpiresAt - createdAt`, so it stays correct even though
+  `HOLD_TTL_MS` is a constant private to `booking.ts`) and not yet expired;
+  (b) a `confirmed` appointment with 0 < time-until-start <= 2 hours.
+  Idempotency is tracked on the appointment record itself (new optional
+  `holdReminderSentAt` / `apptReminderSentAt` fields on `Appointment` in
+  `types.ts`, both optional so no existing appointment-construction call site
+  needed changes) rather than in a module-level Set, so a server restart
+  doesn't cause a double-send. Each firing calls `store.addEvent(...,
+  "reminder_sent", ...)` (added `"reminder_sent"` to `ActivityEventType`)
+  and the injected sink once. `src/server.ts` runs `sweepReminders` on a
+  30-second `setInterval` (`.unref()`'d so it can't keep the process alive
+  on its own), started right after the existing `warmUp()` call and cleared
+  in the SIGINT/SIGTERM shutdown handler; `createApp()` now also returns the
+  interval handle. New `test/reminders.test.ts` (5 tests, unit-level against
+  an in-memory `Store` with the randomized seed appointments cleared out):
+  a hold fires exactly one reminder once it crosses 80% of its TTL and not
+  again on a later sweep; an already-expired or already-confirmed hold never
+  fires one; a confirmed appointment fires exactly once inside the 2-hour
+  window and not again; firing logs a `reminder_sent` activity event.
+  `npm run build` clean; `npm test` 57/57 (52 prior + 5 new). Manually
+  smoke-tested booting the real server (`DATA_FILE=:memory:`) and confirmed
+  `/health` still responds correctly with the sweep interval running, then
+  killed the process.
+
 ## Known issues / ambiguities
 
 - Manual bookings skip the `leadTimeMin` check that voice bookings enforce
@@ -56,5 +85,5 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 
 ## Next step
 
-Phase 12: reminder notifications (`src/reminders.ts`, `NotificationSink`,
-interval sweep in `server.ts`, `reminder_sent` activity events).
+Phase 13: recurring appointments (`recurrence` input on hold/confirm/manual
+booking, shared `seriesId`, `scope: 'this'|'series'` on cancel/reschedule).

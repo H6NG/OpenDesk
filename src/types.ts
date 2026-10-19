@@ -72,6 +72,9 @@ export interface Appointment {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  /** Idempotency markers for reminders.ts; absent/null means not yet sent. */
+  holdReminderSentAt?: string | null;
+  apptReminderSentAt?: string | null;
 }
 
 export interface WaitlistEntry {
@@ -98,7 +101,8 @@ export type ActivityEventType =
   | "waitlist"
   | "waitlist_offer"
   | "onboarded"
-  | "account_linked";
+  | "account_linked"
+  | "reminder_sent";
 
 export interface ActivityEvent {
   id: string;

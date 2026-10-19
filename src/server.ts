@@ -10,12 +10,18 @@ import { registerTools, SERVER_INSTRUCTIONS } from "./mcp/tools.js";
 import { LatencyTracker } from "./latency.js";
 import { bearerAuthMiddleware, registerOAuthRoutes } from "./oauth.js";
 import { registerDashboardRoutes } from "./dashboard.js";
+import { sweepReminders } from "./reminders.js";
+
+const REMINDER_SWEEP_INTERVAL_MS = 30_000;
 
 export async function createApp() {
   const config = loadConfig();
   const store = await Store.load(config.dataFile);
 
   warmUp(store.data.businesses, store.data.appointments, now().toMillis());
+
+  const reminderInterval = setInterval(() => sweepReminders(store, now().toMillis()), REMINDER_SWEEP_INTERVAL_MS);
+  reminderInterval.unref?.();
 
   const latency = new LatencyTracker();
   const app = express();
@@ -84,16 +90,17 @@ export async function createApp() {
     });
   });
 
-  return { app, config, store, latency };
+  return { app, config, store, latency, reminderInterval };
 }
 
 async function main() {
-  const { app, config, store } = await createApp();
+  const { app, config, store, reminderInterval } = await createApp();
   const server = app.listen(config.port, () => {
     console.log(`Front Desk listening on port ${config.port} (auth mode: ${config.authMode})`);
   });
 
   async function shutdown() {
+    clearInterval(reminderInterval);
     await store.waitForIdle();
     server.close(() => process.exit(0));
   }
