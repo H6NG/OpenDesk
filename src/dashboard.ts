@@ -8,6 +8,8 @@ import { now } from "./clock.js";
 import { onboardBusiness, dailyBriefing } from "./bedrock.js";
 import { BookingError, createManualAppointment } from "./booking.js";
 import { computeAnalytics } from "./analytics.js";
+import { addStaffTimeOff, removeStaffTimeOff, listStaffTimeOff } from "./staffTimeOff.js";
+import { markOrderReady, markOrderPickedUp } from "./catalog.js";
 import type { Business } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,19 +72,95 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
     });
 
     const waitlist = store.data.waitlist.filter((w) => w.businessId === business.id && (w.status === "waiting" || w.status === "offered"));
+    const orders = store.data.orders.filter((o) => o.businessId === business.id && (o.status === "placed" || o.status === "ready"));
+    const staffTimeOff = listStaffTimeOff(store, business.id, now().toMillis());
 
     res.json({
       business,
       now: nowBiz.toISO(),
       appointments,
       waitlist,
+      orders,
+      staffTimeOff,
       mcpEndpoint: `${config.publicUrl.replace(/\/$/, "")}/mcp`,
     });
   });
 
+  app.post("/api/staff-time-off", ...api, (req, res) => {
+    const { businessId, staffId, fromIso, toIso, reason } = req.body ?? {};
+    if (typeof businessId !== "string" || typeof staffId !== "string" || typeof fromIso !== "string" || typeof toIso !== "string") {
+      res.status(400).json({ error: "businessId, staffId, fromIso, and toIso are required." });
+      return;
+    }
+    try {
+      const entry = addStaffTimeOff(store, now().toMillis(), { businessId, staffId, fromIso, toIso, reason: typeof reason === "string" ? reason : undefined });
+      res.status(201).json({ timeOff: entry });
+    } catch (e) {
+      if (e instanceof BookingError) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      res.status(500).json({ error: "Could not add the time-off block." });
+    }
+  });
+
+  app.delete("/api/staff-time-off/:id", ...api, (req, res) => {
+    try {
+      removeStaffTimeOff(store, req.params.id as string);
+      res.status(204).end();
+    } catch (e) {
+      if (e instanceof BookingError) {
+        res.status(404).json({ error: e.message });
+        return;
+      }
+      res.status(500).json({ error: "Could not remove the time-off block." });
+    }
+  });
+
+  app.patch("/api/orders/:orderId", ...api, (req, res) => {
+    const { status } = req.body ?? {};
+    if (status !== "ready" && status !== "picked_up") {
+      res.status(400).json({ error: "status must be 'ready' or 'picked_up'." });
+      return;
+    }
+    try {
+      const orderId = req.params.orderId as string;
+      const result = status === "ready" ? markOrderReady(store, now().toMillis(), orderId) : markOrderPickedUp(store, now().toMillis(), orderId);
+      res.json({ order: result.order });
+    } catch (e) {
+      if (e instanceof BookingError) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      res.status(500).json({ error: "Could not update the order." });
+    }
+  });
+
+  app.patch("/api/products/:productId", ...api, (req, res) => {
+    const { productId } = req.params;
+    const { businessId, stockQty } = req.body ?? {};
+    if (typeof businessId !== "string" || !Number.isInteger(stockQty) || stockQty < 0) {
+      res.status(400).json({ error: "businessId and a non-negative integer stockQty are required." });
+      return;
+    }
+    const business = store.getBusiness(businessId);
+    if (!business) {
+      res.status(404).json({ error: "Unknown business." });
+      return;
+    }
+    const product = (business.products ?? []).find((p) => p.id === productId);
+    if (!product) {
+      res.status(404).json({ error: "Unknown product." });
+      return;
+    }
+    product.stockQty = stockQty;
+    store.touch();
+    res.json({ product });
+  });
+
   app.post("/api/appointments", ...api, (req, res) => {
     const body = req.body ?? {};
-    const { businessId, serviceId, staffId, customerName, customerPhone, start, source, notes, recurrence } = body;
+    const { businessId, serviceId, staffId, customerName, customerPhone, start, source, notes, recurrence, party } = body;
     if (
       typeof businessId !== "string" ||
       typeof serviceId !== "string" ||
@@ -99,8 +177,12 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       recurrence && typeof recurrence === "object" && ["weekly", "biweekly", "monthly"].includes(recurrence.freq) && Number.isInteger(recurrence.count)
         ? { freq: recurrence.freq, count: recurrence.count }
         : undefined;
+    const validParty =
+      party && typeof party === "object" && Number.isInteger(party.count)
+        ? { count: party.count, names: Array.isArray(party.names) ? party.names : undefined }
+        : undefined;
     try {
-      const { appointment, seriesAppointments } = createManualAppointment(store, now().toMillis(), {
+      const { appointment, seriesAppointments, groupAppointments } = createManualAppointment(store, now().toMillis(), {
         businessId,
         serviceId,
         staffId,
@@ -110,8 +192,9 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
         source,
         notes: typeof notes === "string" ? notes : undefined,
         recurrence: validRecurrence,
+        party: validParty,
       });
-      res.status(201).json({ appointment, seriesAppointments });
+      res.status(201).json({ appointment, seriesAppointments, groupAppointments });
     } catch (e) {
       if (e instanceof BookingError) {
         res.status(400).json({ error: e.message });

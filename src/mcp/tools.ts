@@ -6,7 +6,7 @@ import type { Store } from "../store.js";
 import { formatHours, scoreBusinesses } from "../businesses.js";
 import { findAvailability, isOpenDuringWindow, staffCanPerform, type Slot } from "../availability.js";
 import { parseSpokenWindow, relativeDayLabel } from "../spokenTime.js";
-import { speakAvailability, speakConfirmation, speakHold, speakSeriesSummary, formatMoney } from "./speech.js";
+import { speakAvailability, speakConfirmation, speakHold, speakSeriesSummary, speakGroupSummary, speakOrderConfirmation, formatMoney } from "./speech.js";
 import {
   sayServicePriceList,
   sayBusinessSummary,
@@ -20,6 +20,13 @@ import {
   sayCancelled,
   sayAlreadyCancelled,
   sayWaitlistJoined,
+  sayItemAvailable,
+  sayItemOutOfStock,
+  sayNoOrders,
+  sayOrderLine,
+  sayOrderSummary,
+  sayOrderCancelled,
+  sayOrderAlreadyCancelled,
 } from "../i18n.js";
 import type { Locale } from "../types.js";
 import {
@@ -33,6 +40,7 @@ import {
   requireBusiness,
   requireService,
 } from "../booking.js";
+import { checkItemAvailability, cancelOrder, placeOrder, listMyOrders } from "../catalog.js";
 
 export interface RequestContext {
   store: Store;
@@ -44,7 +52,11 @@ export const SERVER_INSTRUCTIONS = `Front Desk books appointments for small loca
 
 Flow: find_businesses -> get_business_details -> find_availability -> hold_appointment -> read the hold back to the customer and get an explicit yes -> confirm_appointment.
 
-Never call confirm_appointment without the customer explicitly saying yes to the hold you read back. Holds expire after 5 minutes, so confirm promptly once the customer agrees. Use list_my_appointments, reschedule_appointment, cancel_appointment and join_waitlist for managing existing bookings. All times in tool inputs/outputs are ISO 8601 with the business's local offset.`;
+Never call confirm_appointment without the customer explicitly saying yes to the hold you read back. Holds expire after 5 minutes, so confirm promptly once the customer agrees. Use list_my_appointments, reschedule_appointment, cancel_appointment and join_waitlist for managing existing bookings. All times in tool inputs/outputs are ISO 8601 with the business's local offset.
+
+For a group (e.g. "3 kids' haircuts" or "me and a friend"), pass party on hold_appointment: every attendee gets their own linked appointment at the same start time, usually with a different staff member, booked atomically (all or none). Mutually exclusive with recurrence.
+
+Some businesses also sell stock-tracked physical items or dishes (not appointment slots). Use check_item_availability to see if something's in stock, order_item to place an order for pickup (no hold/confirm step needed — it's not time-slotted), and list_my_orders/cancel_order to manage existing orders.`;
 
 function ok(speech: string, data: Record<string, unknown>): CallToolResult {
   return {
@@ -76,6 +88,19 @@ const recurrenceInputSchema = z
   })
   .optional()
   .describe("Book a recurring series at the same weekday/time, staff, and service. Omit for a one-off appointment.");
+
+const partyInputSchema = z
+  .object({
+    count: z.number().int().min(2).max(8).describe("Total people in the group, including the person speaking"),
+    names: z
+      .array(z.string())
+      .optional()
+      .describe("One name per person in the group, length must equal count. Omit to use the caller's own name for the first slot and 'Guest 2'..'Guest N' for the rest."),
+  })
+  .optional()
+  .describe(
+    "Book several linked appointments at the same start time with different staff members (e.g. 3 kids' haircuts at once). Mutually exclusive with recurrence. Omit for a single booking.",
+  );
 
 function slotFromAppointment(store: Store, appointment: { serviceId: string; staffId: string; businessId: string; start: string; end: string }): Slot {
   const business = store.getBusiness(appointment.businessId)!;
@@ -229,6 +254,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           limit: effectiveLimit,
           nowMs: ctx.nowMs,
           appointments: store.data.appointments,
+          staffTimeOff: store.data.staffTimeOff,
         });
 
         const toOutputSlot = (s: Slot) => ({ start: s.start, end: s.end, staff_id: s.staffId, staff_name: s.staffName, price_cents: s.priceCents });
@@ -237,15 +263,9 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           return ok(speakAvailability(slots, nowBiz, locale), { slots: slots.map(toOutputSlot), can_join_waitlist: false });
         }
 
-        const open = isOpenDuringWindow(business, window.fromDay, window.toDay);
-        if (!open) {
-          const label =
-            window.fromDay === window.toDay
-              ? relativeDayLabel(DateTime.fromISO(window.fromDay, { zone: business.timezone }), nowBiz, locale)
-              : null;
-          return ok(sayBusinessClosed(business.name, label, locale), { slots: [], can_join_waitlist: false });
-        }
-
+        // Whether closed or just fully booked for the requested window, search
+        // the following week for the next opening so the customer always gets
+        // an actionable alternative instead of a dead end.
         const altFrom = DateTime.fromISO(window.toDay).plus({ days: 1 }).toISODate()!;
         const altTo = DateTime.fromISO(window.toDay).plus({ days: 7 }).toISODate()!;
         let alternatives = findAvailability({
@@ -256,6 +276,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           limit: effectiveLimit,
           nowMs: ctx.nowMs,
           appointments: store.data.appointments,
+          staffTimeOff: store.data.staffTimeOff,
         });
         if (alternatives.length === 0 && window.band) {
           alternatives = findAvailability({
@@ -266,10 +287,24 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             limit: effectiveLimit,
             nowMs: ctx.nowMs,
             appointments: store.data.appointments,
+            staffTimeOff: store.data.staffTimeOff,
           });
         }
+        const alternativesSpeech = alternatives.length > 0 ? speakAvailability(alternatives, nowBiz, locale) : null;
 
-        const speech = sayFullyBooked(business.name, alternatives.length > 0 ? speakAvailability(alternatives, nowBiz, locale) : null, locale);
+        const open = isOpenDuringWindow(business, window.fromDay, window.toDay);
+        if (!open) {
+          const label =
+            window.fromDay === window.toDay
+              ? relativeDayLabel(DateTime.fromISO(window.fromDay, { zone: business.timezone }), nowBiz, locale)
+              : null;
+          // Not offering the waitlist here: it only makes sense when a slot
+          // might free up from a cancellation, which can't happen in a window
+          // the business was never open during.
+          return ok(sayBusinessClosed(business.name, label, alternativesSpeech, locale), { slots: [], alternatives: alternatives.map(toOutputSlot), can_join_waitlist: false });
+        }
+
+        const speech = sayFullyBooked(business.name, alternativesSpeech, locale);
 
         return ok(speech, { slots: [], alternatives: alternatives.map(toOutputSlot), can_join_waitlist: true });
       }),
@@ -288,6 +323,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         staff: z.string().optional(),
         notes: z.string().optional(),
         recurrence: recurrenceInputSchema,
+        party: partyInputSchema,
       },
       outputSchema: {
         speech: z.string(),
@@ -300,7 +336,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
       },
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ business_id, service_id, start, staff, notes, recurrence }) =>
+    async ({ business_id, service_id, start, staff, notes, recurrence, party }) =>
       guarded(() => {
         const { appointment, business, staff: chosenStaff } = holdAppointment(store, ctx.nowMs, ctx.customerId, {
           businessId: business_id,
@@ -309,6 +345,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           staffHint: staff,
           notes,
           recurrence,
+          party,
         });
         const slot = slotFromAppointment(store, appointment);
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
@@ -338,23 +375,28 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         start: z.string(),
         end: z.string(),
         series_codes: z.array(z.string()).optional(),
+        group_codes: z.array(z.string()).optional(),
       },
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ hold_id }) =>
       guarded(() => {
-        const { appointment, business, service, staff, seriesAppointments, seriesFreq } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
+        const { appointment, business, service, staff, seriesAppointments, seriesFreq, groupAppointments } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
         const locale: Locale = business.locale ?? "en";
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
         let speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz, locale);
         if (seriesAppointments && seriesAppointments.length > 1 && seriesFreq) {
           speech += speakSeriesSummary(seriesFreq, seriesAppointments.length - 1, locale);
         }
+        if (groupAppointments && groupAppointments.length > 1) {
+          speech += speakGroupSummary(groupAppointments.slice(1).map((a) => a.customerName), locale);
+        }
         return ok(speech, {
           code: appointment.code,
           start: appointment.start,
           end: appointment.end,
           series_codes: seriesAppointments && seriesAppointments.length > 1 ? seriesAppointments.map((a) => a.code) : undefined,
+          group_codes: groupAppointments && groupAppointments.length > 1 ? groupAppointments.map((a) => a.code) : undefined,
         });
       }),
   );
@@ -379,6 +421,8 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             is_waitlist_offer: z.boolean(),
             series_id: z.string().nullable(),
             series_count: z.number(),
+            group_id: z.string().nullable(),
+            group_count: z.number(),
           }),
         ),
       },
@@ -393,10 +437,13 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           return ok(sayNoAppointments(overallLocale), { appointments: [] });
         }
         const seriesCounts = new Map<string, number>();
+        const groupCounts = new Map<string, number>();
         for (const a of appts) {
           if (a.seriesId) seriesCounts.set(a.seriesId, (seriesCounts.get(a.seriesId) ?? 0) + 1);
+          if (a.groupId) groupCounts.set(a.groupId, (groupCounts.get(a.groupId) ?? 0) + 1);
         }
         const seenSeries = new Set<string>();
+        const seenGroups = new Set<string>();
         const rows = appts.map((a) => {
           const business = store.getBusiness(a.businessId)!;
           const locale: Locale = business.locale ?? "en";
@@ -406,8 +453,11 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           const isOffer = a.holdKind === "waitlist_offer";
           const when = relativeDayLabel(DateTime.fromISO(a.start, { setZone: true }), nowBiz, locale);
           const seriesCount = a.seriesId ? seriesCounts.get(a.seriesId)! : 1;
+          const groupCount = a.groupId ? groupCounts.get(a.groupId)! : 1;
           const isFirstOfSeries = !a.seriesId || !seenSeries.has(a.seriesId);
+          const isFirstOfGroup = !a.groupId || !seenGroups.has(a.groupId);
           if (a.seriesId) seenSeries.add(a.seriesId);
+          if (a.groupId) seenGroups.add(a.groupId);
           return {
             id: a.id,
             code: a.code,
@@ -419,11 +469,15 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             is_waitlist_offer: isOffer,
             series_id: a.seriesId ?? null,
             series_count: seriesCount,
-            _speechLine: !isFirstOfSeries
+            group_id: a.groupId ?? null,
+            group_count: groupCount,
+            _speechLine: !isFirstOfSeries || !isFirstOfGroup
               ? null
               : isOffer
                 ? sayWaitlistOfferLine(service.name, business.name, when, staff.name, locale)
-                : sayAppointmentLine(service.name, business.name, staff.name, when, a.code, seriesCount > 1 ? seriesCount - 1 : 0, locale),
+                : a.groupId
+                  ? sayAppointmentLine(service.name, business.name, staff.name, when, a.code, groupCount > 1 ? groupCount - 1 : 0, locale, "group")
+                  : sayAppointmentLine(service.name, business.name, staff.name, when, a.code, seriesCount > 1 ? seriesCount - 1 : 0, locale, "series"),
           };
         });
         const speechLines = rows.map((r) => r._speechLine).filter((l): l is string => l !== null);
@@ -533,6 +587,156 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         });
         const speech = sayWaitlistJoined(service.name, business.name, window.label, locale);
         return ok(speech, { waitlist_id: entry.id });
+      }),
+  );
+
+  server.registerTool(
+    "check_item_availability",
+    {
+      title: "Check item availability",
+      description:
+        "Check whether a business has a specific stock-tracked item or dish available right now, and how many are left. Use get_business_details first if you need to see what a business carries.",
+      inputSchema: {
+        business_id: z.string(),
+        item: z.string().describe("Item or dish name, e.g. 'beard oil' or 'salmon tacos'"),
+      },
+      outputSchema: {
+        speech: z.string(),
+        available: z.boolean(),
+        stock_qty: z.number(),
+        price_cents: z.number(),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ business_id, item }) =>
+      guarded(() => {
+        const { business, product } = checkItemAvailability(store, business_id, item);
+        const locale: Locale = business.locale ?? "en";
+        const speech =
+          product.stockQty > 0
+            ? sayItemAvailable(product.name, business.name, product.stockQty, product.priceCents, formatMoney, locale)
+            : sayItemOutOfStock(product.name, business.name, locale);
+        return ok(speech, { available: product.stockQty > 0, stock_qty: product.stockQty, price_cents: product.priceCents });
+      }),
+  );
+
+  server.registerTool(
+    "order_item",
+    {
+      title: "Order an item",
+      description:
+        "Order a stock-tracked item or dish for pickup. Decrements stock immediately; unlike appointments, there's no hold/confirm step since an in-stock item has nothing to race against. 'pickup_when' accepts natural phrases like 'tomorrow morning'; omit it for as-soon-as-possible pickup.",
+      inputSchema: {
+        business_id: z.string(),
+        item: z.string(),
+        quantity: z.number().int().min(1).max(50).optional().describe("Defaults to 1"),
+        pickup_when: z.string().optional().describe("Spoken time phrase, e.g. 'tomorrow morning'. Omit for as soon as possible."),
+        notes: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        order_id: z.string(),
+        code: z.string(),
+        quantity: z.number(),
+        total_price_cents: z.number(),
+        pickup_label: z.string(),
+      },
+      annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async ({ business_id, item, quantity, pickup_when, notes }) =>
+      guarded(() => {
+        const { order, business } = placeOrder(store, ctx.nowMs, ctx.customerId, {
+          businessId: business_id,
+          item,
+          quantity,
+          pickupWhen: pickup_when,
+          notes,
+        });
+        const locale: Locale = business.locale ?? "en";
+        const speech = speakOrderConfirmation(order.quantity, order.productName, business.name, order.priceCents, order.pickupLabel, order.code, locale);
+        return ok(speech, {
+          order_id: order.id,
+          code: order.code,
+          quantity: order.quantity,
+          total_price_cents: order.priceCents,
+          pickup_label: order.pickupLabel,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "list_my_orders",
+    {
+      title: "List my orders",
+      description: "List the customer's active (placed or ready) item orders.",
+      inputSchema: {},
+      outputSchema: {
+        speech: z.string(),
+        orders: z.array(
+          z.object({
+            id: z.string(),
+            code: z.string(),
+            business_name: z.string(),
+            product_name: z.string(),
+            quantity: z.number(),
+            status: z.string(),
+            pickup_label: z.string(),
+          }),
+        ),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async () =>
+      guarded(() => {
+        const orders = listMyOrders(store, ctx.customerId);
+        // No single business to key a locale off of; same approach as list_my_appointments.
+        const overallLocale: Locale = orders.length > 0 ? store.getBusiness(orders[0].businessId)?.locale ?? "en" : "en";
+        if (orders.length === 0) {
+          return ok(sayNoOrders(overallLocale), { orders: [] });
+        }
+        const rows = orders.map((o) => {
+          const business = store.getBusiness(o.businessId)!;
+          const locale: Locale = business.locale ?? "en";
+          return {
+            id: o.id,
+            code: o.code,
+            business_name: business.name,
+            product_name: o.productName,
+            quantity: o.quantity,
+            status: o.status,
+            pickup_label: o.pickupLabel,
+            _speechLine: sayOrderLine(o.productName, business.name, o.quantity, o.pickupLabel, o.code, locale),
+          };
+        });
+        const speech = sayOrderSummary(rows.length, rows.map((r) => r._speechLine), overallLocale);
+        return ok(speech, { orders: rows.map(({ _speechLine, ...rest }) => rest) });
+      }),
+  );
+
+  server.registerTool(
+    "cancel_order",
+    {
+      title: "Cancel an order",
+      description:
+        "Cancel an existing item order, identified by order_id or its 4-character code. Idempotent: cancelling an already-cancelled order just confirms it. Restocks the item.",
+      inputSchema: {
+        order_id: z.string().optional(),
+        code: z.string().optional(),
+      },
+      outputSchema: {
+        speech: z.string(),
+        cancelled: z.boolean(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ order_id, code }) =>
+      guarded(() => {
+        const idOrCode = order_id ?? code;
+        if (!idOrCode) return fail("I need either the order id or the confirmation code to cancel it.");
+        const { alreadyCancelled, business } = cancelOrder(store, ctx.nowMs, ctx.customerId, idOrCode);
+        const locale: Locale = business.locale ?? "en";
+        const speech = alreadyCancelled ? sayOrderAlreadyCancelled(locale) : sayOrderCancelled(locale);
+        return ok(speech, { cancelled: true });
       }),
   );
 }

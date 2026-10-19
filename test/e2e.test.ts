@@ -7,6 +7,7 @@ import {
   buildNoneModeFixture,
   buildOAuthModeFixture,
   buildSpanishLocaleFixture,
+  buildFrenchLocaleFixture,
   spawnTestServer,
   OAUTH_CLIENT_ID,
   OAUTH_CLIENT_SECRET,
@@ -145,11 +146,15 @@ describe("e2e: none mode", () => {
     assert.equal(resched.structuredContent!.start, newStart);
   });
 
-  it("says the business is closed on a fully-closed day", async () => {
+  it("says the business is closed on a fully-closed day, and still offers the next open alternative", async () => {
     const avail = await timedCallTool(client, "find_availability", { business_id: "shop-a", service_id: "cut", date: "2026-10-18" }); // Sunday, closed
     assert.equal(avail.structuredContent!.can_join_waitlist, false);
     assert.equal((avail.structuredContent!.slots as unknown[]).length, 0);
     assert.match(avail.structuredContent!.speech as string, /closed/i);
+    // Tuesday onward is open, so even though Sunday is closed, a next-opening
+    // alternative should still come back instead of a dead end.
+    assert.ok((avail.structuredContent!.alternatives as unknown[]).length > 0);
+    assert.match(avail.structuredContent!.speech as string, /next time they're open/i);
   });
 
   it("offers alternatives and the waitlist when fully booked, then auto-offers the freed slot on cancel", async () => {
@@ -295,6 +300,82 @@ describe("e2e: none mode", () => {
       assert.equal(seriesRows.length, 3);
       assert.equal(new Set(seriesRows.map((a) => a.series_id)).size, 1);
       assert.match(list.structuredContent!.speech as string, /plus 2 more in this series/);
+    });
+  });
+
+  describe("Phase 18: group bookings", () => {
+    it("books a 2-person party via hold+confirm with a distinct staff member each, speech mentions it, and list_my_appointments groups it", async () => {
+      const start = "2026-10-23T13:00:00.000-07:00"; // Friday, untouched by earlier tests
+      const hold = await timedCallTool(client, "hold_appointment", {
+        business_id: "shop-a",
+        service_id: "cut",
+        start,
+        party: { count: 2, names: ["Jordan", "Casey"] },
+      });
+      assert.equal(hold.isError, undefined);
+
+      const confirm = await timedCallTool(client, "confirm_appointment", { hold_id: hold.structuredContent!.hold_id as string });
+      assert.equal(confirm.isError, undefined);
+      assert.match(confirm.structuredContent!.speech as string, /also got Casey in your group/);
+      assert.equal((confirm.structuredContent!.group_codes as string[]).length, 2);
+
+      const list = await timedCallTool(client, "list_my_appointments", {});
+      const appts = list.structuredContent!.appointments as { group_count: number; group_id: string | null }[];
+      const groupRows = appts.filter((a) => a.group_count === 2);
+      assert.equal(groupRows.length, 2);
+      assert.equal(new Set(groupRows.map((a) => a.group_id)).size, 1);
+      assert.match(list.structuredContent!.speech as string, /plus 1 more in this group/);
+    });
+
+    it("rejects a group too large for the business's staff", async () => {
+      const hold = await timedCallTool(client, "hold_appointment", {
+        business_id: "shop-a",
+        service_id: "cut",
+        start: "2026-10-23T14:00:00.000-07:00",
+        party: { count: 5 }, // shop-a only has 2 staff who do "cut"
+      });
+      assert.equal(hold.isError, true);
+    });
+  });
+
+  describe("Phase 17: item catalog / orders", () => {
+    it("checks availability, orders, lists, and cancels an item order", async () => {
+      const check = await timedCallTool(client, "check_item_availability", { business_id: "shop-a", item: "Pomade" });
+      assert.equal(check.isError, undefined);
+      assert.equal(check.structuredContent!.available, true);
+      assert.equal(check.structuredContent!.stock_qty, 3);
+
+      const order = await timedCallTool(client, "order_item", { business_id: "shop-a", item: "Pomade", quantity: 2, pickup_when: "tomorrow morning" });
+      assert.equal(order.isError, undefined);
+      assert.match(order.structuredContent!.speech as string, /Order placed/);
+      assert.equal(order.structuredContent!.quantity, 2);
+      assert.equal(order.structuredContent!.total_price_cents, 3000);
+      const orderId = order.structuredContent!.order_id as string;
+
+      const afterOrder = await timedCallTool(client, "check_item_availability", { business_id: "shop-a", item: "Pomade" });
+      assert.equal(afterOrder.structuredContent!.stock_qty, 1);
+
+      const list = await timedCallTool(client, "list_my_orders", {});
+      assert.match(list.structuredContent!.speech as string, /You have 1 order/);
+
+      const cancel = await timedCallTool(client, "cancel_order", { order_id: orderId });
+      assert.equal(cancel.isError, undefined);
+      assert.match(cancel.structuredContent!.speech as string, /^Order cancelled/);
+
+      const afterCancel = await timedCallTool(client, "check_item_availability", { business_id: "shop-a", item: "Pomade" });
+      assert.equal(afterCancel.structuredContent!.stock_qty, 3); // restocked
+
+      const secondCancel = await timedCallTool(client, "cancel_order", { order_id: orderId });
+      assert.match(secondCancel.structuredContent!.speech as string, /already cancelled/);
+    });
+
+    it("reports out of stock and rejects ordering more than is in stock", async () => {
+      const outOfStock = await timedCallTool(client, "check_item_availability", { business_id: "shop-a", item: "Shampoo" });
+      assert.equal(outOfStock.structuredContent!.available, false);
+      assert.match(outOfStock.structuredContent!.speech as string, /out of/i);
+
+      const overOrder = await timedCallTool(client, "order_item", { business_id: "shop-a", item: "Pomade", quantity: 99 });
+      assert.equal(overOrder.isError, true);
     });
   });
 });
@@ -609,5 +690,61 @@ describe("e2e: Spanish locale (Phase 15)", () => {
   it("reports a closed day in Spanish", async () => {
     const avail = await timedCallTool(client, "find_availability", { business_id: "shop-es", service_id: "corte", date: "2026-10-18" }); // Sunday, closed
     assert.match(avail.structuredContent!.speech as string, /cerrado/i);
+  });
+});
+
+describe("e2e: French locale (Phase 16)", () => {
+  let server: TestServer;
+  let client: Client;
+
+  before(async () => {
+    server = await spawnTestServer({ port: 3914, fixture: buildFrenchLocaleFixture(), authMode: "none" });
+    client = await newClient(server.baseUrl);
+  });
+
+  after(async () => {
+    await client.close();
+    await server.stop();
+  });
+
+  it("finds, holds, confirms, lists, and cancels entirely in French", async () => {
+    const found = await timedCallTool(client, "find_businesses", { query: "Salon Soleil" });
+    assert.equal(found.isError, undefined);
+
+    const avail = await timedCallTool(client, "find_availability", {
+      business_id: "shop-fr",
+      service_id: "coupe",
+      when: "mardi matin",
+    });
+    assert.equal(avail.isError, undefined);
+    const slots = avail.structuredContent!.slots as { start: string; staff_name: string }[];
+    assert.ok(slots.length > 0);
+    assert.match(avail.structuredContent!.speech as string, /mardi/i);
+
+    const hold = await timedCallTool(client, "hold_appointment", {
+      business_id: "shop-fr",
+      service_id: "coupe",
+      start: slots[0].start,
+      staff: "Marie",
+    });
+    assert.equal(hold.isError, undefined);
+    assert.match(hold.structuredContent!.speech as string, /Je réserve/);
+
+    const confirm = await timedCallTool(client, "confirm_appointment", { hold_id: hold.structuredContent!.hold_id as string });
+    assert.equal(confirm.isError, undefined);
+    assert.match(confirm.structuredContent!.speech as string, /^C'est réservé/);
+    const code = confirm.structuredContent!.code as string;
+
+    const list = await timedCallTool(client, "list_my_appointments", {});
+    assert.match(list.structuredContent!.speech as string, /Vous avez \d+ rendez-vous/);
+
+    const cancel = await timedCallTool(client, "cancel_appointment", { code });
+    assert.equal(cancel.isError, undefined);
+    assert.match(cancel.structuredContent!.speech as string, /^Annulé/);
+  });
+
+  it("reports a closed day in French", async () => {
+    const avail = await timedCallTool(client, "find_availability", { business_id: "shop-fr", service_id: "coupe", date: "2026-10-18" }); // Sunday, closed
+    assert.match(avail.structuredContent!.speech as string, /fermé/i);
   });
 });

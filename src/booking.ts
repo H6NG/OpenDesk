@@ -8,7 +8,7 @@ import {
 } from "./availability.js";
 import { newId, randomCode } from "./codes.js";
 import type { Store } from "./store.js";
-import type { Appointment, AppointmentSource, Business, Customer, RecurrenceFreq, RecurrenceSpec, Service, Staff, WaitlistEntry } from "./types.js";
+import type { Appointment, AppointmentSource, Business, Customer, PartySpec, RecurrenceFreq, RecurrenceSpec, Service, Staff, WaitlistEntry } from "./types.js";
 
 export class BookingError extends Error {
   constructor(message: string) {
@@ -73,6 +73,7 @@ export interface HoldResult {
   staff: Staff;
   seriesAppointments?: Appointment[];
   seriesFreq?: RecurrenceFreq;
+  groupAppointments?: Appointment[];
 }
 
 /** Same weekday/time (monthly keeps the same day-of-month), count occurrences including the first. */
@@ -104,7 +105,7 @@ function validateOccurrences(
         `${business.name} is closed on ${occurrences[i].toFormat("cccc, LLL d")}, so the whole series can't be booked as requested.`,
       );
     }
-    if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs)) {
+    if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs, undefined, store.data.staffTimeOff)) {
       throw new BookingError(
         `${staff.name} is already booked on ${occurrences[i].toFormat("cccc, LLL d")}, so the whole series can't be booked as requested.`,
       );
@@ -118,16 +119,81 @@ function validateRecurrence(recurrence: RecurrenceSpec): void {
   }
 }
 
+const PARTY_MAX = 8;
+
+function validateParty(party: PartySpec): void {
+  if (!Number.isInteger(party.count) || party.count < 2 || party.count > PARTY_MAX) {
+    throw new BookingError(`A group booking must be between 2 and ${PARTY_MAX} people.`);
+  }
+  if (party.names && party.names.length !== party.count) {
+    throw new BookingError(`Expected ${party.count} names for the group, got ${party.names.length}.`);
+  }
+}
+
+/** One name per appointment in the group: the booking customer's own name (or an explicit first name) for the first slot, then "Guest 2".."Guest N" unless explicit names were given. */
+function partyAttendeeNames(party: PartySpec, fallbackFirstName: string): string[] {
+  if (party.names) return party.names;
+  const names = [fallbackFirstName];
+  for (let i = 2; i <= party.count; i++) names.push(`Guest ${i}`);
+  return names;
+}
+
+/**
+ * Finds `count` distinct staff members (excluding `excludeStaffId`) who can
+ * perform `service` and are free at `startMs`, validating before any
+ * mutation so the whole group materializes atomically or not at all —
+ * same "validate every occurrence first" shape as recurrence's
+ * `validateOccurrences`, just across staff instead of across dates.
+ */
+function findStaffForParty(
+  store: Store,
+  nowMs: number,
+  business: Business,
+  service: Service,
+  startMs: number,
+  excludeStaffId: string,
+  count: number,
+): Staff[] {
+  const eligible = business.staff.filter((s) => staffCanPerform(s, service.id) && s.id !== excludeStaffId);
+  const chosen: Staff[] = [];
+  for (const candidate of eligible) {
+    if (chosen.length >= count) break;
+    if (isSlotFree(business, store.data.appointments, candidate.id, startMs, service.durationMin, nowMs, undefined, store.data.staffTimeOff)) {
+      chosen.push(candidate);
+    }
+  }
+  if (chosen.length < count) {
+    throw new BookingError(`Not enough staff are free at that time for the whole group of ${count + 1}. Try a different time.`);
+  }
+  return chosen;
+}
+
 export function holdAppointment(
   store: Store,
   nowMs: number,
   customerId: string,
-  params: { businessId: string; serviceId: string; startIso: string; staffHint?: string; notes?: string; recurrence?: RecurrenceSpec },
+  params: { businessId: string; serviceId: string; startIso: string; staffHint?: string; notes?: string; recurrence?: RecurrenceSpec; party?: PartySpec },
 ): HoldResult {
   const business = requireBusiness(store, params.businessId);
   const service = requireService(business, params.serviceId);
   const candidates = resolveStaff(business, service, params.staffHint);
+  if (params.recurrence && params.party) {
+    throw new BookingError("A booking can't be both a recurring series and a group booking at the same time.");
+  }
   if (params.recurrence) validateRecurrence(params.recurrence);
+  if (params.party) {
+    validateParty(params.party);
+    // The group's size is checked against every staff member who can
+    // perform the service businesswide, not just `candidates` — staffHint
+    // (if given) only picks who serves the *primary* attendee, it isn't a
+    // restriction on the whole group's staff pool.
+    const eligibleCount = business.staff.filter((s) => staffCanPerform(s, service.id)).length;
+    if (eligibleCount < params.party.count) {
+      throw new BookingError(
+        `Only ${eligibleCount} staff member${eligibleCount === 1 ? "" : "s"} can perform ${service.name} at ${business.name}, which isn't enough for a group of ${params.party.count}.`,
+      );
+    }
+  }
 
   const startMs = Date.parse(params.startIso);
   if (Number.isNaN(startMs)) throw new BookingError("I couldn't understand that start time. Try find_availability to get a valid time.");
@@ -140,7 +206,7 @@ export function holdAppointment(
 
   let chosenStaff: Staff | undefined;
   for (const staff of candidates) {
-    if (isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs)) {
+    if (isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs, undefined, store.data.staffTimeOff)) {
       chosenStaff = staff;
       break;
     }
@@ -153,6 +219,7 @@ export function holdAppointment(
   const start = DateTime.fromMillis(startMs, { zone: business.timezone });
   const end = start.plus({ minutes: service.durationMin });
   const nowIso = isoUtc(nowMs);
+  const attendeeNames = params.party ? partyAttendeeNames(params.party, customer?.name ?? "Guest") : undefined;
 
   const appointment: Appointment = {
     id: newId("appt"),
@@ -161,7 +228,7 @@ export function holdAppointment(
     serviceId: service.id,
     staffId: chosenStaff.id,
     customerId,
-    customerName: customer?.name ?? "Guest",
+    customerName: attendeeNames ? attendeeNames[0] : customer?.name ?? "Guest",
     start: start.toISO()!,
     end: end.toISO()!,
     status: "held",
@@ -173,6 +240,8 @@ export function holdAppointment(
     updatedAt: nowIso,
     seriesId: params.recurrence ? newId("series") : null,
     pendingRecurrence: params.recurrence ?? null,
+    groupId: attendeeNames ? newId("group") : null,
+    pendingParty: attendeeNames ? { attendeeNames: attendeeNames.slice(1) } : null,
   };
   store.data.appointments.push(appointment);
   store.touch();
@@ -183,6 +252,10 @@ export function holdAppointment(
 
 function seriesSiblings(store: Store, seriesId: string): Appointment[] {
   return store.data.appointments.filter((a) => a.seriesId === seriesId).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+}
+
+function groupSiblings(store: Store, groupId: string): Appointment[] {
+  return store.data.appointments.filter((a) => a.groupId === groupId);
 }
 
 export function confirmAppointment(store: Store, nowMs: number, customerId: string, holdId: string): HoldResult {
@@ -197,7 +270,8 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
 
   if (appointment.status === "confirmed") {
     const seriesAppointments = appointment.seriesId ? seriesSiblings(store, appointment.seriesId) : undefined;
-    return { appointment, business, service, staff, seriesAppointments }; // idempotent
+    const groupAppointments = appointment.groupId ? groupSiblings(store, appointment.groupId) : undefined;
+    return { appointment, business, service, staff, seriesAppointments, groupAppointments }; // idempotent
   }
   if (appointment.status !== "held") {
     throw new BookingError("That hold expired. Use find_availability for a new time.");
@@ -241,9 +315,40 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
     seriesAppointments = [appointment, ...created];
   }
 
+  let groupAppointments: Appointment[] | undefined;
+  if (appointment.pendingParty) {
+    const attendeeNames = appointment.pendingParty.attendeeNames;
+    const startMs = Date.parse(appointment.start);
+    const chosenStaff = findStaffForParty(store, nowMs, business, service, startMs, staff.id, attendeeNames.length);
+
+    const nowIso = isoUtc(nowMs);
+    const created: Appointment[] = attendeeNames.map((name, i) => ({
+      id: newId("appt"),
+      code: randomCode(),
+      businessId: business.id,
+      serviceId: service.id,
+      staffId: chosenStaff[i].id,
+      customerId: appointment.customerId,
+      customerName: name,
+      start: appointment.start,
+      end: appointment.end,
+      status: "confirmed",
+      holdExpiresAt: null,
+      holdKind: null,
+      source: appointment.source,
+      notes: appointment.notes,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      groupId: appointment.groupId,
+    }));
+    store.data.appointments.push(...created);
+    groupAppointments = [appointment, ...created];
+  }
+
   appointment.status = "confirmed";
   appointment.holdExpiresAt = null;
   appointment.pendingRecurrence = null;
+  appointment.pendingParty = null;
   appointment.updatedAt = isoUtc(nowMs);
   store.touch();
 
@@ -252,9 +357,10 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
     if (entry) entry.status = "fulfilled";
   }
   const seriesNote = seriesAppointments && seriesAppointments.length > 1 ? ` (series of ${seriesAppointments.length})` : "";
-  store.addEvent(business.id, "booked", `${appointment.customerName} booked ${service.name} with ${staff.name}${seriesNote}, code ${appointment.code}`);
+  const groupNote = groupAppointments && groupAppointments.length > 1 ? ` (group of ${groupAppointments.length})` : "";
+  store.addEvent(business.id, "booked", `${appointment.customerName} booked ${service.name} with ${staff.name}${seriesNote}${groupNote}, code ${appointment.code}`);
 
-  return { appointment, business, service, staff, seriesAppointments, seriesFreq };
+  return { appointment, business, service, staff, seriesAppointments, seriesFreq, groupAppointments };
 }
 
 export interface ManualBookResult {
@@ -263,6 +369,7 @@ export interface ManualBookResult {
   service: Service;
   staff: Staff;
   seriesAppointments?: Appointment[];
+  groupAppointments?: Appointment[];
 }
 
 /**
@@ -270,7 +377,9 @@ export interface ManualBookResult {
  * phone call or walk-in — no hold step, since a human (not the 5-minute
  * voice hold) is doing the booking in real time. If `recurrence` is given,
  * every occurrence is validated before any of them are created, so the
- * whole series books atomically or not at all.
+ * whole series books atomically or not at all. If `party` is given instead,
+ * every attendee's staff member is validated free at the same start time
+ * before any of them are created, same atomic-or-nothing shape.
  */
 export function createManualAppointment(
   store: Store,
@@ -285,6 +394,7 @@ export function createManualAppointment(
     source: AppointmentSource;
     notes?: string;
     recurrence?: RecurrenceSpec;
+    party?: PartySpec;
   },
 ): ManualBookResult {
   const business = requireBusiness(store, params.businessId);
@@ -294,14 +404,26 @@ export function createManualAppointment(
   if (!staffCanPerform(staff, service.id)) {
     throw new BookingError(`${staff.name} doesn't perform ${service.name} at ${business.name}.`);
   }
+  if (params.recurrence && params.party) {
+    throw new BookingError("A booking can't be both a recurring series and a group booking at the same time.");
+  }
   if (params.recurrence) validateRecurrence(params.recurrence);
+  if (params.party) {
+    validateParty(params.party);
+    const eligibleCount = business.staff.filter((s) => staffCanPerform(s, service.id)).length;
+    if (eligibleCount < params.party.count) {
+      throw new BookingError(
+        `Only ${eligibleCount} staff member${eligibleCount === 1 ? "" : "s"} can perform ${service.name} at ${business.name}, which isn't enough for a group of ${params.party.count}.`,
+      );
+    }
+  }
 
   const startMs = Date.parse(params.startIso);
   if (Number.isNaN(startMs)) throw new BookingError("I couldn't understand that start time.");
   if (!fitsBusinessHours(business, startMs, service.durationMin)) {
     throw new BookingError(`${business.name} is closed then.`);
   }
-  if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs)) {
+  if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs, undefined, store.data.staffTimeOff)) {
     throw new BookingError("That slot is already booked for that staff member.");
   }
 
@@ -342,16 +464,49 @@ export function createManualAppointment(
       seriesId,
     };
   });
+
+  let groupAppointments: Appointment[] | undefined;
+  if (params.party) {
+    const attendeeNames = partyAttendeeNames(params.party, params.customerName);
+    const otherStaff = findStaffForParty(store, nowMs, business, service, startMs, staff.id, attendeeNames.length - 1);
+    const groupId = newId("group");
+    created[0].groupId = groupId;
+    created[0].customerName = attendeeNames[0];
+    const end = start.plus({ minutes: service.durationMin });
+    const others: Appointment[] = attendeeNames.slice(1).map((name, i) => ({
+      id: newId("appt"),
+      code: randomCode(),
+      businessId: business.id,
+      serviceId: service.id,
+      staffId: otherStaff[i].id,
+      customerId: customer.id,
+      customerName: name,
+      start: start.toISO()!,
+      end: end.toISO()!,
+      status: "confirmed",
+      holdExpiresAt: null,
+      holdKind: null,
+      source: params.source,
+      notes: params.notes ?? "",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      groupId,
+    }));
+    created.push(...others);
+    groupAppointments = created;
+  }
+
   store.data.appointments.push(...created);
   store.touch();
-  const seriesNote = created.length > 1 ? ` (series of ${created.length})` : "";
+  const seriesNote = seriesId && created.length > 1 ? ` (series of ${created.length})` : "";
+  const groupNote = groupAppointments && groupAppointments.length > 1 ? ` (group of ${groupAppointments.length})` : "";
   store.addEvent(
     business.id,
     "booked",
-    `${created[0].customerName} booked ${service.name} with ${staff.name} by ${params.source}${seriesNote}, code ${created[0].code}`,
+    `${created[0].customerName} booked ${service.name} with ${staff.name} by ${params.source}${seriesNote}${groupNote}, code ${created[0].code}`,
   );
 
-  return { appointment: created[0], business, service, staff, seriesAppointments: created.length > 1 ? created : undefined };
+  return { appointment: created[0], business, service, staff, seriesAppointments: seriesId && created.length > 1 ? created : undefined, groupAppointments };
 }
 
 function windowCoversStart(entry: WaitlistEntry, startIso: string, timezone: string): boolean {
@@ -514,7 +669,7 @@ export function rescheduleAppointment(
   if (!fitsBusinessHours(business, newStartMs, service.durationMin)) {
     throw new BookingError(`${business.name} is closed then. Use find_availability to find an open time.`);
   }
-  if (!isSlotFree(business, store.data.appointments, newStaff.id, newStartMs, service.durationMin, nowMs, appointment.id)) {
+  if (!isSlotFree(business, store.data.appointments, newStaff.id, newStartMs, service.durationMin, nowMs, appointment.id, store.data.staffTimeOff)) {
     throw new BookingError("That new time just got taken. Use find_availability again for another time.");
   }
 
@@ -540,7 +695,7 @@ export function rescheduleAppointment(
           `${business.name} is closed on ${DateTime.fromMillis(siblingNewStartMs, { zone: business.timezone }).toFormat("cccc, LLL d")}, so the whole series can't move that way.`,
         );
       }
-      if (!isSlotFree(business, store.data.appointments, siblingStaffId, siblingNewStartMs, service.durationMin, nowMs, sibling.id)) {
+      if (!isSlotFree(business, store.data.appointments, siblingStaffId, siblingNewStartMs, service.durationMin, nowMs, sibling.id, store.data.staffTimeOff)) {
         throw new BookingError(
           `That staff member is already booked on ${DateTime.fromMillis(siblingNewStartMs, { zone: business.timezone }).toFormat("cccc, LLL d")}, so the whole series can't move that way.`,
         );

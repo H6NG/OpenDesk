@@ -21,6 +21,8 @@ function freshData(): StoreData {
     businesses,
     customers: [DEMO_CUSTOMER, ...customers],
     appointments,
+    orders: [],
+    staffTimeOff: [],
     waitlist: [],
     events: [],
     oauthCodes: [],

@@ -39,6 +39,21 @@ const DAYPART_RULES_ES: DaypartRule[] = [
   { pattern: /\b(después del trabajo|por la noche|esta noche)\b/, band: [1020, 1260], name: "por la noche" },
 ];
 
+// French equivalents. "midi" (noon) is deliberately not a lunchtime trigger
+// here, same reasoning as "mediodía" above; it's normalized to "12pm" and
+// used by avant/après (before/after) instead.
+const DAYPART_RULES_FR: DaypartRule[] = [
+  { pattern: /\b(en fin d'après-midi|en fin de journée)\b/, band: [900, 1080], name: "en fin d'après-midi" },
+  { pattern: /\b(tôt le matin|avant le travail)\b/, band: [420, 570], name: "tôt le matin" },
+  // Leading \b can't anchor right before an accented letter (à is not a \w
+  // char in JS regex), so this is written without the leading "à " that a
+  // natural phrase would have; "l'heure du déjeuner" still matches it.
+  { pattern: /\b(l'heure du déjeuner|au déjeuner|pendant le déjeuner)\b/, band: [690, 810], name: "à l'heure du déjeuner" },
+  { pattern: /\bmatin\b/, band: [480, 720], name: "matin" },
+  { pattern: /\baprès-midi\b/, band: [720, 1020], name: "après-midi" },
+  { pattern: /\b(après le travail|le soir|ce soir)\b/, band: [1020, 1260], name: "soir" },
+];
+
 const BETWEEN_RE_EN = /\bbetween\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+and\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 const AFTER_RE_EN = /\bafter\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 const BEFORE_RE_EN = /\bbefore\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
@@ -46,6 +61,10 @@ const BEFORE_RE_EN = /\bbefore\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 const BETWEEN_RE_ES = /\bentre\s+(?:la[s]?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+y\s+(?:la[s]?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 const AFTER_RE_ES = /\bdespués de(?:l)?\s+(?:la[s]?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 const BEFORE_RE_ES = /\bantes de(?:l)?\s+(?:la[s]?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+
+const BETWEEN_RE_FR = /\bentre\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+et\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+const AFTER_RE_FR = /\baprès\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
+const BEFORE_RE_FR = /\bavant\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i;
 
 const NEXT_WEEKEND_RE_EN = /\bnext weekend\b/;
 const THIS_WEEKEND_RE_EN = /\bthis weekend\b/;
@@ -58,6 +77,12 @@ const THIS_WEEKEND_RE_ES = /\beste fin de semana\b/;
 const NEXT_WEEK_RE_ES = /\b(la próxima semana|semana que viene)\b/;
 const THIS_WEEK_RE_ES = /\besta semana\b/;
 const ASAP_RE_ES = /\b(lo antes posible|cuanto antes|cuando sea)\b/;
+
+const NEXT_WEEKEND_RE_FR = /\b(le week-end prochain|le prochain week-end)\b/;
+const THIS_WEEKEND_RE_FR = /\bce week-end\b/;
+const NEXT_WEEK_RE_FR = /\bla semaine prochaine\b/;
+const THIS_WEEK_RE_FR = /\bcette semaine\b/;
+const ASAP_RE_FR = /\b(dès que possible|n'importe quand|quand vous voulez)\b/;
 
 interface LocaleRules {
   daypartRules: DaypartRule[];
@@ -73,6 +98,10 @@ interface LocaleRules {
   chronoParse: (text: string, ref: { instant: Date; timezone: number }, opts: { forwardDate: boolean }) => chrono.ParsedResult[];
   asapLabel: string;
   anyTimeLabel: string;
+  nextWeekendLabel: string;
+  thisWeekendLabel: string;
+  nextWeekLabel: string;
+  thisWeekLabel: string;
 }
 
 const RULES: Record<Locale, LocaleRules> = {
@@ -90,6 +119,10 @@ const RULES: Record<Locale, LocaleRules> = {
     chronoParse: (text, ref, opts) => chrono.parse(text, ref, opts),
     asapLabel: "as soon as possible",
     anyTimeLabel: "any time",
+    nextWeekendLabel: "next weekend",
+    thisWeekendLabel: "this weekend",
+    nextWeekLabel: "next week",
+    thisWeekLabel: "this week",
   },
   es: {
     daypartRules: DAYPART_RULES_ES,
@@ -105,6 +138,31 @@ const RULES: Record<Locale, LocaleRules> = {
     chronoParse: (text, ref, opts) => chrono.es.parse(text, ref, opts),
     asapLabel: "lo antes posible",
     anyTimeLabel: "cualquier hora",
+    nextWeekendLabel: "el próximo fin de semana",
+    thisWeekendLabel: "este fin de semana",
+    nextWeekLabel: "la próxima semana",
+    thisWeekLabel: "esta semana",
+  },
+  fr: {
+    daypartRules: DAYPART_RULES_FR,
+    betweenRe: BETWEEN_RE_FR,
+    afterRe: AFTER_RE_FR,
+    beforeRe: BEFORE_RE_FR,
+    nextWeekendRe: NEXT_WEEKEND_RE_FR,
+    thisWeekendRe: THIS_WEEKEND_RE_FR,
+    nextWeekRe: NEXT_WEEK_RE_FR,
+    thisWeekRe: THIS_WEEK_RE_FR,
+    asapRe: ASAP_RE_FR,
+    // "midi" (noon) normalizes to a bare time, but not inside "après-midi"
+    // (afternoon), which must survive to match the afternoon daypart rule.
+    normalize: (p) => p.replace(/(?<!après-)\bmidi\b/g, "12pm").replace(/\bminuit\b/g, "12am"),
+    chronoParse: (text, ref, opts) => chrono.fr.parse(text, ref, opts),
+    asapLabel: "dès que possible",
+    anyTimeLabel: "n'importe quelle heure",
+    nextWeekendLabel: "le week-end prochain",
+    thisWeekendLabel: "ce week-end",
+    nextWeekLabel: "la semaine prochaine",
+    thisWeekLabel: "cette semaine",
   },
 };
 
@@ -164,8 +222,8 @@ function laterDay(a: DateTime, b: DateTime): DateTime {
  * from chrono-node (forwardDate, reference instant + timezone offset);
  * "between/after/before" and daypart phrases ("morning", "after work", ...)
  * are matched directly since chrono does not understand this domain's bands.
- * `locale` picks the English or Spanish keyword/daypart vocabulary and the
- * matching chrono-node parser (chrono.es for Spanish).
+ * `locale` picks the keyword/daypart vocabulary and the matching chrono-node
+ * parser (chrono.es for Spanish, chrono.fr for French) for the business's language.
  */
 export function parseSpokenWindow(
   phrase: string,
@@ -189,24 +247,24 @@ export function parseSpokenWindow(
     const sat = nextMonday.plus({ days: 5 });
     const sun = nextMonday.plus({ days: 6 });
     const { band } = extractBand(normalized.replace(rules.nextWeekendRe, " "), rules);
-    return { fromDay: isoDate(sat), toDay: isoDate(sun), band, label: locale === "es" ? "el próximo fin de semana" : "next weekend" };
+    return { fromDay: isoDate(sat), toDay: isoDate(sun), band, label: rules.nextWeekendLabel };
   }
   if (rules.thisWeekendRe.test(normalized)) {
     const thisMonday = mondayOf(today);
     const sat = laterDay(today, thisMonday.plus({ days: 5 }));
     const sun = laterDay(today, thisMonday.plus({ days: 6 }));
     const { band } = extractBand(normalized.replace(rules.thisWeekendRe, " "), rules);
-    return { fromDay: isoDate(sat), toDay: isoDate(sun), band, label: locale === "es" ? "este fin de semana" : "this weekend" };
+    return { fromDay: isoDate(sat), toDay: isoDate(sun), band, label: rules.thisWeekendLabel };
   }
   if (rules.nextWeekRe.test(normalized)) {
     const nextMonday = mondayOf(today).plus({ days: 7 });
     const { band } = extractBand(normalized.replace(rules.nextWeekRe, " "), rules);
-    return { fromDay: isoDate(nextMonday), toDay: isoDate(nextMonday.plus({ days: 6 })), band, label: locale === "es" ? "la próxima semana" : "next week" };
+    return { fromDay: isoDate(nextMonday), toDay: isoDate(nextMonday.plus({ days: 6 })), band, label: rules.nextWeekLabel };
   }
   if (rules.thisWeekRe.test(normalized)) {
     const thisSunday = mondayOf(today).plus({ days: 6 });
     const { band } = extractBand(normalized.replace(rules.thisWeekRe, " "), rules);
-    return { fromDay: isoDate(today), toDay: isoDate(thisSunday), band, label: locale === "es" ? "esta semana" : "this week" };
+    return { fromDay: isoDate(today), toDay: isoDate(thisSunday), band, label: rules.thisWeekLabel };
   }
 
   const { band, rest } = extractBand(normalized, rules);
@@ -272,14 +330,18 @@ function phraseLabel(normalized: string, rules: LocaleRules, day?: DateTime, now
 const WEEKDAY_FAR_FORMAT: Record<Locale, string> = {
   en: "cccc, MMMM d",
   es: "cccc, d 'de' MMMM",
+  fr: "cccc d MMMM",
 };
+
+const TODAY_LABEL: Record<Locale, string> = { en: "today", es: "hoy", fr: "aujourd'hui" };
+const TOMORROW_LABEL: Record<Locale, string> = { en: "tomorrow", es: "mañana", fr: "demain" };
 
 export function relativeDayLabel(day: DateTime, nowRef: DateTime, locale: Locale = "en"): string {
   const today = nowRef.startOf("day");
   const diffDays = Math.round(day.startOf("day").diff(today, "days").days);
-  const localized = locale === "es" ? day.setLocale("es") : day;
-  if (diffDays === 0) return locale === "es" ? "hoy" : "today";
-  if (diffDays === 1) return locale === "es" ? "mañana" : "tomorrow";
+  const localized = day.setLocale(locale);
+  if (diffDays === 0) return TODAY_LABEL[locale];
+  if (diffDays === 1) return TOMORROW_LABEL[locale];
   if (diffDays > 1 && diffDays < 7) return localized.toFormat("cccc");
   return localized.toFormat(WEEKDAY_FAR_FORMAT[locale]);
 }
@@ -291,17 +353,23 @@ export function formatClock(dt: DateTime, locale: Locale = "en"): string {
     const period = dt.hour < 12 ? "de la mañana" : dt.hour < 19 ? "de la tarde" : "de la noche";
     return `${hour12}:${minute} ${period}`;
   }
+  if (locale === "fr") {
+    const period = dt.hour < 12 ? "du matin" : dt.hour < 19 ? "de l'après-midi" : "du soir";
+    return `${hour12}:${minute} ${period}`;
+  }
   const period = dt.hour < 12 ? "AM" : "PM";
   return `${hour12}:${minute} ${period}`;
 }
 
 /**
  * "tomorrow at 9:00 AM" / "Thursday at 5:30 PM" / "Monday, November 2 at 10:00 AM"
- * ("mañana a las 9:00 de la mañana" / ... in Spanish)
+ * ("mañana a las 9:00 de la mañana" in Spanish / "demain à 9:00 du matin" in French)
  */
 export function speakDateTime(dt: DateTime, nowRef?: DateTime, locale: Locale = "en"): string {
   const reference = (nowRef ?? dt).setZone(dt.zone);
   const dayLabel = relativeDayLabel(dt, reference, locale);
   const clock = formatClock(dt, locale);
-  return locale === "es" ? `${dayLabel} a las ${clock}` : `${dayLabel} at ${clock}`;
+  if (locale === "es") return `${dayLabel} a las ${clock}`;
+  if (locale === "fr") return `${dayLabel} à ${clock}`;
+  return `${dayLabel} at ${clock}`;
 }

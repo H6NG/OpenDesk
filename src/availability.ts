@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import type { Appointment, Business, Service, Staff } from "./types.js";
+import type { Appointment, Business, Service, Staff, StaffTimeOff } from "./types.js";
 import type { SpokenWindow } from "./spokenTime.js";
 
 export interface Slot {
@@ -27,8 +27,13 @@ export function staffCanPerform(staff: Staff, serviceId: string): boolean {
   return staff.serviceIds.includes(serviceId);
 }
 
-/** Per-request busy index: epoch-ms intervals per staff, buffer included, expired holds ignored. */
-export function buildBusyIndex(business: Business, appointments: Appointment[], nowMs: number): Map<string, BusyInterval[]> {
+/** Per-request busy index: epoch-ms intervals per staff, buffer included, expired holds ignored. Staff time-off blocks (no buffer) are folded in as plain busy intervals, so every downstream check (dayCandidates, isSlotFree) automatically respects them without its own logic. */
+export function buildBusyIndex(
+  business: Business,
+  appointments: Appointment[],
+  nowMs: number,
+  staffTimeOff: StaffTimeOff[] = [],
+): Map<string, BusyInterval[]> {
   const bufferMs = business.bufferMin * 60_000;
   const byStaff = new Map<string, BusyInterval[]>();
   for (const appt of appointments) {
@@ -41,6 +46,12 @@ export function buildBusyIndex(business: Business, appointments: Appointment[], 
     const list = byStaff.get(appt.staffId) ?? [];
     list.push({ startMs, endMs });
     byStaff.set(appt.staffId, list);
+  }
+  for (const off of staffTimeOff) {
+    if (off.businessId !== business.id) continue;
+    const list = byStaff.get(off.staffId) ?? [];
+    list.push({ startMs: Date.parse(off.fromIso), endMs: Date.parse(off.toIso) });
+    byStaff.set(off.staffId, list);
   }
   for (const list of byStaff.values()) list.sort((a, b) => a.startMs - b.startMs);
   return byStaff;
@@ -117,6 +128,7 @@ export interface FindAvailabilityParams {
   limit: number;
   nowMs: number;
   appointments: Appointment[];
+  staffTimeOff?: StaffTimeOff[];
 }
 
 /**
@@ -132,8 +144,8 @@ export function isOpenDuringWindow(business: Business, fromDay: string, toDay: s
 }
 
 export function findAvailability(params: FindAvailabilityParams): Slot[] {
-  const { business, service, window, staffFilter, limit, nowMs, appointments } = params;
-  const busyIndex = buildBusyIndex(business, appointments, nowMs);
+  const { business, service, window, staffFilter, limit, nowMs, appointments, staffTimeOff } = params;
+  const busyIndex = buildBusyIndex(business, appointments, nowMs, staffTimeOff);
   const leadTimeFloorMs = nowMs + business.leadTimeMin * 60_000;
 
   const staffList = business.staff.filter(
@@ -236,9 +248,10 @@ export function isSlotFree(
   durationMin: number,
   nowMs: number,
   excludeAppointmentId?: string,
+  staffTimeOff: StaffTimeOff[] = [],
 ): boolean {
   const relevant = excludeAppointmentId ? appointments.filter((a) => a.id !== excludeAppointmentId) : appointments;
-  const busyIndex = buildBusyIndex(business, relevant, nowMs);
+  const busyIndex = buildBusyIndex(business, relevant, nowMs, staffTimeOff);
   const busy = busyIndex.get(staffId) ?? [];
   const bufferMs = business.bufferMin * 60_000;
   const candidateBusyEnd = startMs + durationMin * 60_000 + bufferMs;

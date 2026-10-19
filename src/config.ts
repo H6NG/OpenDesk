@@ -12,6 +12,9 @@ export interface Config {
   dashboardToken: string | null;
   awsRegion: string;
   bedrockModelId: string;
+  twilioAccountSid: string;
+  twilioAuthToken: string;
+  twilioFromNumber: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -31,5 +34,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dashboardToken: env.DASHBOARD_TOKEN || null,
     awsRegion: env.AWS_REGION ?? "us-east-1",
     bedrockModelId: env.BEDROCK_MODEL_ID ?? "us.amazon.nova-lite-v1:0",
+    twilioAccountSid: env.TWILIO_ACCOUNT_SID ?? "",
+    twilioAuthToken: env.TWILIO_AUTH_TOKEN ?? "",
+    twilioFromNumber: env.TWILIO_FROM_NUMBER ?? "",
   };
 }

@@ -1,18 +1,26 @@
-# Final Report — dev branch stretch features (Phases 11-15)
+# Final Report — dev branch stretch features (Phases 11-20)
 
 This is the dev-branch continuation of "Front Desk," building on top of the
 frozen main-branch submission (Phases 0-10, documented in PROGRESS.md and
 FINAL_REPORT.md). All work described here lives on the `dev` branch; `main`,
 SPEC.md, PROGRESS.md, FINAL_REPORT.md, and DONE were never touched.
 
-Every phase in SPEC_DEV.md (11 through 15) is complete. See PROGRESS_DEV.md
-for the full phase-by-phase log, including every design decision and scope
-cut, with reasoning. Nothing was left "explicitly out of scope" from
-SPEC_DEV.md's own out-of-scope list (real payments, multi-location
-businesses, a standalone customer portal) — none of the five phases touched
-any of those.
+Every phase in SPEC_DEV.md (11 through 15) is complete, plus several
+user-requested additions made after SPEC_DEV.md was finished: Phase 16
+(French voice support), Phase 17 (a closed-day alternatives fix, plus a
+stock-tracked item/order catalog for businesses that sell goods, not just
+appointment time), Phase 18 (group bookings), Phase 19 (staff time-off
+blocks), and Phase 20 (order-ready notifications plus real, pluggable SMS
+delivery). Deposits/prepayment for no-show-prone bookings was proposed
+alongside 18-20 but explicitly deferred — it needs a real PCI/compliance
+conversation with the project owner, same reasoning as the other
+out-of-scope items below. See PROGRESS_DEV.md for the full phase-by-phase
+log, including every design decision and scope cut, with reasoning. Nothing
+was left "explicitly out of scope" from SPEC_DEV.md's own out-of-scope list
+(real payments, multi-location businesses, a standalone customer portal) —
+none of these phases touched any of those.
 
-## Full `npm test` output (84/84 passing)
+## Full `npm test` output (139/139 passing)
 
 ```
 > front-desk@0.1.0 test
@@ -61,6 +69,52 @@ ok 3 - onboardBusiness
     ok 1 - stays within 90 words and mentions the business
     1..1
 ok 4 - dailyBriefing
+# Subtest: requireProduct
+    # Subtest: finds a product by id, exact name, or substring name, case-insensitively
+    ok 1 - finds a product by id, exact name, or substring name, case-insensitively
+    # Subtest: throws a BookingError for an unknown item
+    ok 2 - throws a BookingError for an unknown item
+    1..2
+ok 5 - requireProduct
+# Subtest: checkItemAvailability
+    # Subtest: reports current stock and price without mutating anything
+    ok 1 - reports current stock and price without mutating anything
+    1..1
+ok 6 - checkItemAvailability
+# Subtest: placeOrder
+    # Subtest: decrements stock, computes the total price, and logs an order_placed event
+    ok 1 - decrements stock, computes the total price, and logs an order_placed event
+    # Subtest: defaults quantity to 1 and resolves a spoken pickup phrase into a label
+    ok 2 - defaults quantity to 1 and resolves a spoken pickup phrase into a label
+    # Subtest: rejects ordering more than is in stock
+    ok 3 - rejects ordering more than is in stock
+    # Subtest: rejects ordering an item with zero stock
+    ok 4 - rejects ordering an item with zero stock
+    1..4
+ok 7 - placeOrder
+# Subtest: cancelOrder
+    # Subtest: restocks the item and marks the order cancelled
+    ok 1 - restocks the item and marks the order cancelled
+    # Subtest: is idempotent on an already-cancelled order
+    ok 2 - is idempotent on an already-cancelled order
+    # Subtest: rejects cancelling an order belonging to a different customer
+    ok 3 - rejects cancelling an order belonging to a different customer
+    1..3
+ok 8 - cancelOrder
+# Subtest: listMyOrders
+    # Subtest: lists only the customer's active (placed/ready) orders, oldest first
+    ok 1 - lists only the customer's active (placed/ready) orders, oldest first
+    1..1
+ok 9 - listMyOrders
+# Subtest: markOrderReady / markOrderPickedUp
+    # Subtest: transitions placed -> ready and notifies the customer
+    ok 1 - transitions placed -> ready and notifies the customer
+    # Subtest: rejects marking ready an order that isn't placed
+    ok 2 - rejects marking ready an order that isn't placed
+    # Subtest: transitions ready -> picked_up without sending another notification
+    ok 3 - transitions ready -> picked_up without sending another notification
+    1..3
+ok 10 - markOrderReady / markOrderPickedUp
 # Subtest: e2e: none mode
     # Subtest: full flow: find -> details -> availability -> hold -> confirm
     ok 1 - full flow: find -> details -> availability -> hold -> confirm
@@ -70,8 +124,8 @@ ok 4 - dailyBriefing
     ok 3 - confirm_appointment is idempotent
     # Subtest: reschedules an appointment by its 4-character code
     ok 4 - reschedules an appointment by its 4-character code
-    # Subtest: says the business is closed on a fully-closed day
-    ok 5 - says the business is closed on a fully-closed day
+    # Subtest: says the business is closed on a fully-closed day, and still offers the next open alternative
+    ok 5 - says the business is closed on a fully-closed day, and still offers the next open alternative
     # Subtest: offers alternatives and the waitlist when fully booked, then auto-offers the freed slot on cancel
     ok 6 - offers alternatives and the waitlist when fully booked, then auto-offers the freed slot on cancel
     # Subtest: returns a recoverable error for an unknown business
@@ -96,8 +150,22 @@ ok 4 - dailyBriefing
         ok 1 - books a weekly series via hold+confirm, speech mentions it, and list_my_appointments groups the series
         1..1
     ok 13 - Phase 13: recurring appointments
-    1..13
-ok 5 - e2e: none mode
+    # Subtest: Phase 18: group bookings
+        # Subtest: books a 2-person party via hold+confirm with a distinct staff member each, speech mentions it, and list_my_appointments groups it
+        ok 1 - books a 2-person party via hold+confirm with a distinct staff member each, speech mentions it, and list_my_appointments groups it
+        # Subtest: rejects a group too large for the business's staff
+        ok 2 - rejects a group too large for the business's staff
+        1..2
+    ok 14 - Phase 18: group bookings
+    # Subtest: Phase 17: item catalog / orders
+        # Subtest: checks availability, orders, lists, and cancels an item order
+        ok 1 - checks availability, orders, lists, and cancels an item order
+        # Subtest: reports out of stock and rejects ordering more than is in stock
+        ok 2 - reports out of stock and rejects ordering more than is in stock
+        1..2
+    ok 15 - Phase 17: item catalog / orders
+    1..15
+ok 11 - e2e: none mode
 # Subtest: e2e: oauth mode
     # Subtest: part 1b: two linked customers
         # Subtest: A books the only slot, B waitlists, A cancels, B gets offered and confirms, A cannot cancel B's booking
@@ -133,21 +201,48 @@ ok 5 - e2e: none mode
         1..10
     ok 3 - part 2: oauth protocol
     1..3
-ok 6 - e2e: oauth mode
+ok 12 - e2e: oauth mode
 # Subtest: e2e: Spanish locale (Phase 15)
     # Subtest: finds, holds, confirms, lists, and cancels entirely in Spanish
     ok 1 - finds, holds, confirms, lists, and cancels entirely in Spanish
     # Subtest: reports a closed day in Spanish
     ok 2 - reports a closed day in Spanish
     1..2
-ok 7 - e2e: Spanish locale (Phase 15)
+ok 13 - e2e: Spanish locale (Phase 15)
+# Subtest: e2e: French locale (Phase 16)
+    # Subtest: finds, holds, confirms, lists, and cancels entirely in French
+    ok 1 - finds, holds, confirms, lists, and cancels entirely in French
+    # Subtest: reports a closed day in French
+    ok 2 - reports a closed day in French
+    1..2
+ok 14 - e2e: French locale (Phase 16)
+# Subtest: group bookings: hold + confirm
+    # Subtest: books a 3-person party atomically, each attendee with a different staff member
+    ok 1 - books a 3-person party atomically, each attendee with a different staff member
+    # Subtest: defaults to the caller's own name plus 'Guest N' when no names are given
+    ok 2 - defaults to the caller's own name plus 'Guest N' when no names are given
+    # Subtest: rejects a group booking immediately if too few staff perform the service
+    ok 3 - rejects a group booking immediately if too few staff perform the service
+    # Subtest: rejects the whole group at confirm time if not enough staff are free, leaving the hold intact
+    ok 4 - rejects the whole group at confirm time if not enough staff are free, leaving the hold intact
+    # Subtest: rejects combining recurrence and party in the same booking
+    ok 5 - rejects combining recurrence and party in the same booking
+    # Subtest: confirming an already-confirmed group hold is idempotent and returns the same group
+    ok 6 - confirming an already-confirmed group hold is idempotent and returns the same group
+    1..6
+ok 15 - group bookings: hold + confirm
+# Subtest: group bookings: manual booking
+    # Subtest: createManualAppointment with party books every attendee as confirmed directly, each with a distinct staff member
+    ok 1 - createManualAppointment with party books every attendee as confirmed directly, each with a distinct staff member
+    1..1
+ok 16 - group bookings: manual booking
 # Subtest: recurring appointments: hold + confirm
     # Subtest: books a 4-occurrence weekly series atomically, every Monday
     ok 1 - books a 4-occurrence weekly series atomically, every Monday
     # Subtest: rejects the whole series if any occurrence conflicts, booking none of it
     ok 2 - rejects the whole series if any occurrence conflicts, booking none of it
     1..2
-ok 8 - recurring appointments: hold + confirm
+ok 17 - recurring appointments: hold + confirm
 # Subtest: recurring appointments: cancel / reschedule scope
     # Subtest: cancel scope:'series' cancels the target and future occurrences but leaves past ones alone
     ok 1 - cancel scope:'series' cancels the target and future occurrences but leaves past ones alone
@@ -156,12 +251,12 @@ ok 8 - recurring appointments: hold + confirm
     # Subtest: reschedule scope:'this' (default) leaves siblings untouched
     ok 3 - reschedule scope:'this' (default) leaves siblings untouched
     1..3
-ok 9 - recurring appointments: cancel / reschedule scope
+ok 18 - recurring appointments: cancel / reschedule scope
 # Subtest: recurring appointments: manual booking
     # Subtest: createManualAppointment with recurrence books every occurrence as confirmed directly
     ok 1 - createManualAppointment with recurrence books every occurrence as confirmed directly
     1..1
-ok 10 - recurring appointments: manual booking
+ok 19 - recurring appointments: manual booking
 # Subtest: sweepReminders: hold expiry
     # Subtest: fires exactly one reminder once a hold has used 80% of its 5-minute TTL
     ok 1 - fires exactly one reminder once a hold has used 80% of its 5-minute TTL
@@ -170,14 +265,37 @@ ok 10 - recurring appointments: manual booking
     # Subtest: does not remind an already-confirmed hold
     ok 3 - does not remind an already-confirmed hold
     1..3
-ok 11 - sweepReminders: hold expiry
+ok 20 - sweepReminders: hold expiry
 # Subtest: sweepReminders: upcoming appointment
     # Subtest: fires once ~2 hours before start and not again on a second sweep
     ok 1 - fires once ~2 hours before start and not again on a second sweep
     # Subtest: logs a reminder_sent activity event
     ok 2 - logs a reminder_sent activity event
     1..2
-ok 12 - sweepReminders: upcoming appointment
+ok 21 - sweepReminders: upcoming appointment
+# Subtest: smsConfigured
+    # Subtest: is true only when all three fields are set
+    ok 1 - is true only when all three fields are set
+    1..1
+ok 22 - smsConfigured
+# Subtest: sendSms
+    # Subtest: throws a clear error when not configured, without touching the client
+    ok 1 - throws a clear error when not configured, without touching the client
+    # Subtest: calls the injected client with to/from/body when configured
+    ok 2 - calls the injected client with to/from/body when configured
+    # Subtest: propagates a client failure
+    ok 3 - propagates a client failure
+    1..3
+ok 23 - sendSms
+# Subtest: SmsNotificationSink
+    # Subtest: sends via the configured client when the customer has a phone on file
+    ok 1 - sends via the configured client when the customer has a phone on file
+    # Subtest: logs instead of sending when the customer has no phone on file
+    ok 2 - logs instead of sending when the customer has no phone on file
+    # Subtest: logs rather than throwing when the send fails
+    ok 3 - logs rather than throwing when the send fails
+    1..3
+ok 24 - SmsNotificationSink
 # Subtest: parseSpokenWindow
     # Subtest: "thursday after work" -> 10-22, band [1020,1260]
     ok 1 - "thursday after work" -> 10-22, band [1020,1260]
@@ -204,7 +322,7 @@ ok 12 - sweepReminders: upcoming appointment
     # Subtest: "8am" -> rolls to 10-19
     ok 12 - "8am" -> rolls to 10-19
     1..12
-ok 13 - parseSpokenWindow
+ok 25 - parseSpokenWindow
 # Subtest: parseSpokenWindow: Spanish equivalents resolve to the same windows
     # Subtest: "el jueves después del trabajo" -> 10-22, band [1020,1260]
     ok 1 - "el jueves después del trabajo" -> 10-22, band [1020,1260]
@@ -231,7 +349,34 @@ ok 13 - parseSpokenWindow
     # Subtest: "8am" -> rolls to 10-19 (digits parse the same in both locales)
     ok 12 - "8am" -> rolls to 10-19 (digits parse the same in both locales)
     1..12
-ok 14 - parseSpokenWindow: Spanish equivalents resolve to the same windows
+ok 26 - parseSpokenWindow: Spanish equivalents resolve to the same windows
+# Subtest: parseSpokenWindow: French equivalents resolve to the same windows
+    # Subtest: "jeudi après le travail" -> 10-22, band [1020,1260]
+    ok 1 - "jeudi après le travail" -> 10-22, band [1020,1260]
+    # Subtest: "demain matin" -> 10-19, [480,720]
+    ok 2 - "demain matin" -> 10-19, [480,720]
+    # Subtest: "ce week-end" -> 10-18 only
+    ok 3 - "ce week-end" -> 10-18 only
+    # Subtest: "le week-end prochain" -> 10-24..10-25
+    ok 4 - "le week-end prochain" -> 10-24..10-25
+    # Subtest: "la semaine prochaine" -> 10-19..10-25
+    ok 5 - "la semaine prochaine" -> 10-19..10-25
+    # Subtest: "après 3 vendredi" -> 10-23, [900,1440]
+    ok 6 - "après 3 vendredi" -> 10-23, [900,1440]
+    # Subtest: "avant midi demain" -> [0,720]
+    ok 7 - "avant midi demain" -> [0,720]
+    # Subtest: "entre 2 et 4 mercredi" -> [840,960]
+    ok 8 - "entre 2 et 4 mercredi" -> [840,960]
+    # Subtest: "jeudi à 5:30pm" -> exact Thu 17:30
+    ok 9 - "jeudi à 5:30pm" -> exact Thu 17:30
+    # Subtest: "à l'heure du déjeuner mardi" -> [690,810]
+    ok 10 - "à l'heure du déjeuner mardi" -> [690,810]
+    # Subtest: "30 octobre"
+    ok 11 - "30 octobre"
+    # Subtest: "8am" -> rolls to 10-19 (digits parse the same in every locale)
+    ok 12 - "8am" -> rolls to 10-19 (digits parse the same in every locale)
+    1..12
+ok 27 - parseSpokenWindow: French equivalents resolve to the same windows
 # Subtest: speakDateTime
     # Subtest: formats tomorrow
     ok 1 - formats tomorrow
@@ -245,17 +390,41 @@ ok 14 - parseSpokenWindow: Spanish equivalents resolve to the same windows
     ok 5 - formats a weekday within the week in Spanish
     # Subtest: formats a date far enough out to need the full form in Spanish
     ok 6 - formats a date far enough out to need the full form in Spanish
-    1..6
-ok 15 - speakDateTime
-1..15
-# tests 84
-# suites 20
-# pass 84
+    # Subtest: formats tomorrow in French
+    ok 7 - formats tomorrow in French
+    # Subtest: formats a weekday within the week in French
+    ok 8 - formats a weekday within the week in French
+    # Subtest: formats a date far enough out to need the full form in French
+    ok 9 - formats a date far enough out to need the full form in French
+    1..9
+ok 28 - speakDateTime
+# Subtest: addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
+    # Subtest: adds a block, lists only future/ongoing ones, and removes it
+    ok 1 - adds a block, lists only future/ongoing ones, and removes it
+    # Subtest: excludes blocks that have already ended
+    ok 2 - excludes blocks that have already ended
+    # Subtest: rejects an unknown staff member and a backwards range
+    ok 3 - rejects an unknown staff member and a backwards range
+    # Subtest: removing an unknown id throws
+    ok 4 - removing an unknown id throws
+    1..4
+ok 29 - addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
+# Subtest: staff time-off integrated into availability
+    # Subtest: excludes a blocked staff member from findAvailability during their time off
+    ok 1 - excludes a blocked staff member from findAvailability during their time off
+    # Subtest: isSlotFree returns false during a blocked staff member's time off
+    ok 2 - isSlotFree returns false during a blocked staff member's time off
+    1..2
+ok 30 - staff time-off integrated into availability
+1..30
+# tests 139
+# suites 37
+# pass 139
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6071.888167
+# duration_ms 7336.810333
 ```
 
 `npm run build` (`tsc -p tsconfig.json`) also compiles clean with zero errors.
@@ -285,6 +454,37 @@ ok 15 - speakDateTime
 - **Phase 15 — Spanish voice support**: setting `Business.locale = "es"`
   makes every tool's spoken-time parsing (via `chrono.es`) and
   success-path speech render entirely in Spanish.
+- **Phase 16 — French voice support** (user-requested, after SPEC_DEV.md):
+  setting `Business.locale = "fr"` does the same for French (via
+  `chrono.fr`), on the same `Locale`/`RULES` foundation Phase 15 built.
+- **Phase 17 — closed-day fix + item catalog/orders** (user-requested,
+  after SPEC_DEV.md): `find_availability` now offers the next open
+  alternative even when the business is closed for the whole requested
+  window, not just when it's fully booked. Separately, businesses can now
+  carry a stock-tracked catalog of physical items/dishes — independent of
+  the time-slot Services — with `check_item_availability`, `order_item`,
+  `list_my_orders`, and `cancel_order` (no hold/confirm step: an in-stock
+  item has no time-slot contention to protect against).
+- **Phase 18 — Group bookings** (user-requested, after SPEC_DEV.md):
+  `hold_appointment`/`confirm_appointment`/the manual-booking endpoint take
+  an optional `party: { count, names? }` and book every attendee's
+  appointment atomically at the same start time, each with a different
+  staff member (e.g. 3 kids' haircuts at once). Mutually exclusive with
+  `recurrence`.
+- **Phase 19 — Staff time off** (user-requested, after SPEC_DEV.md): an
+  owner can mark a staff member unavailable for a block of time (e.g. "Sam
+  is out sick Thursday"), independent of the business's own hours. Folded
+  directly into the existing busy-interval index, so every
+  availability/double-booking check already respects it automatically.
+- **Phase 20 — Order-ready notifications + real SMS** (user-requested,
+  after SPEC_DEV.md): an owner marks a placed order "ready," which notifies
+  the customer — the piece that was previously missing even though
+  `Order.status` already had a `"ready"` value. The notification system
+  itself gained a real, pluggable delivery path: a Twilio-backed
+  `SmsNotificationSink` sends an actual SMS when `TWILIO_*` credentials are
+  configured, falling back to the existing console sink otherwise — same
+  "implement it for real, fail cleanly without live credentials" pattern
+  Phase 6 used for Bedrock.
 
 See PROGRESS_DEV.md's Log section for the full design rationale, every
 ambiguity encountered, and exactly how each was resolved.
@@ -378,18 +578,136 @@ reservando..." for a hold, "Listo, tienes..." for a confirmation,
 exact flow end-to-end over the real MCP protocol if you'd rather read code
 than set it up by hand.
 
+### Phase 16 — French voice support
+
+Same mechanism as Phase 15, just `locale: "fr"`. Set it on a business, then
+call the MCP tools with French phrases, e.g.:
+
+```
+find_availability { business_id, service_id, when: "mardi matin" }
+```
+
+Every tool's success-path speech comes back in French — "Je réserve..." for
+a hold, "C'est réservé..." for a confirmation, "Annulé..." for a
+cancellation, "Vous avez N rendez-vous : ..." for a listing.
+`test/e2e.test.ts`'s "e2e: French locale (Phase 16)" suite drives this exact
+flow end-to-end over the real MCP protocol if you'd rather read code than
+set it up by hand.
+
+### Phase 17 — closed-day alternatives + item catalog/orders
+
+**Closed-day alternatives**: ask `find_availability` for a day the business
+is fully closed (e.g. Sunday at Maple Street Barbers) — the speech now adds
+"The next time they're open is ..." with a real alternative slot, instead of
+just stopping at "they're closed."
+
+**Item catalog/orders**: Maple Street Barbers carries two seeded items
+(Matte Pomade, Beard Oil); Paws and Suds Grooming carries two more, one
+seeded at zero stock (Dental Chews) to demo the out-of-stock path. Via an
+MCP client:
+
+```
+check_item_availability { business_id: "maple-street-barbers", item: "beard oil" }
+order_item { business_id: "maple-street-barbers", item: "beard oil", quantity: 2, pickup_when: "tomorrow morning" }
+list_my_orders {}
+cancel_order { order_id: "<order_id from order_item>" }
+```
+
+`order_item` decrements stock immediately (no hold/confirm step) and
+returns a spoken confirmation code the same way `confirm_appointment` does;
+`cancel_order` restocks the item. On the dashboard, open `/`, pick a
+business with products — the new **Products** card lets the owner set a
+stock count directly, and the new **Orders** card lists active orders.
+Manually verified against a live server: `GET /api/state` returns the
+business's `products`/`orders`, `PATCH /api/products/:id` restocks, and a
+full MCP round trip (check → order → list) produced the expected speech
+("Order placed: 2 Beard Oil from Maple Street Barbers, total $30, ready
+tomorrow morning...") with stock correctly decremented from 4 to 2.
+`test/catalog.test.ts` and the "Phase 17: item catalog / orders" suite in
+`test/e2e.test.ts` cover this without needing a live server.
+
+### Phase 18 — Group bookings
+
+Via an MCP client, book a party at the same time with different staff:
+
+```
+find_availability { business_id: "maple-street-barbers", service_id: "mens-cut", when: "tomorrow morning" }
+hold_appointment { business_id: "maple-street-barbers", service_id: "mens-cut", start: "<a slot's start>", party: { count: 2, names: ["Mia", "Liam"] } }
+confirm_appointment { hold_id: "<hold_id from above>" }
+list_my_appointments {}
+```
+
+The confirmation speech adds "I've also got Liam in your group," and
+`group_codes` lists both confirmation codes; `list_my_appointments` groups
+them with "(plus 1 more in this group)." If the business doesn't have
+enough staff who perform the service free at that exact time, the whole
+group is rejected atomically and the hold is left intact (same shape as
+Phase 13's recurrence). Manually verified against a live server with the
+real randomized demo seed: a contended slot correctly rejected the whole
+group while a different, open slot booked cleanly for both attendees with
+two different barbers. `test/group.test.ts` (unit, with a dedicated
+3-staff fixture) and the "Phase 18: group bookings" suite in
+`test/e2e.test.ts` cover this deterministically.
+
+### Phase 19 — Staff time off
+
+Via the dashboard: open `/`, pick a business, open the **Staff time off**
+card, and add a block (staff member, from/to ISO times, optional reason).
+Or directly:
+
+```
+curl -X POST http://localhost:3000/api/staff-time-off \
+  -H 'content-type: application/json' \
+  -d '{"businessId":"maple-street-barbers","staffId":"sam","fromIso":"2026-10-20T00:00:00-07:00","toIso":"2026-10-21T00:00:00-07:00","reason":"sick"}'
+```
+
+Then call `find_availability` for that staff member on that day — they no
+longer appear, while other staff are unaffected. Manually verified against
+a live server: adding Sam's time-off block made `find_availability`
+(filtered to Sam) return zero slots for that day while Priya's slots were
+untouched. `test/staffTimeOff.test.ts` covers the CRUD operations and the
+availability-engine integration directly.
+
+### Phase 20 — Order-ready notifications + real SMS
+
+Place an order (see Phase 17 above), then mark it ready from the dashboard's
+**Orders** card ("Mark ready" button), or directly:
+
+```
+curl -X PATCH http://localhost:3000/api/orders/<order_id> -H 'content-type: application/json' -d '{"status":"ready"}'
+```
+
+With no `TWILIO_*` env vars set, the notification logs to the console/
+activity feed exactly like Phase 12's reminders do (verified live: `[notify]
+Your order for 1 Matte Pomade at Maple Street Barbers is ready for pickup.`
+appeared on the server's stdout). Set `TWILIO_ACCOUNT_SID`,
+`TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER` in `.env` to send a real SMS
+instead — `server.ts` swaps in `SmsNotificationSink` automatically when all
+three are present. `test/sms.test.ts` covers the Twilio REST client (via an
+injectable stub, same pattern as `setBedrockClient`) and the
+configured-vs-unconfigured/success-vs-failure paths without ever making a
+real network call; `test/catalog.test.ts`'s `markOrderReady` suite covers
+the status transition and notification firing.
+
 ## Known sandbox limitations (not bugs)
 
 - No headless browser (Chromium/Puppeteer/Playwright) was available in this
-  sandbox to visually screenshot the new dashboard charts; the chart
-  pipeline was verified by checking the JS syntax (`node --check`) and by
-  confirming `GET /api/analytics` returns correct, non-trivial data against
-  a live server with real appointments. Same category of gap as the
-  original FINAL_REPORT.md's no-Docker/no-AWS-credentials notes.
-- No real SMS/push provider exists in this sandbox for Phase 12's
-  reminders, so `ConsoleNotificationSink` logs to stdout/the activity feed
-  instead — the same pattern the original submission used for Bedrock in
-  Phase 6 (implement for real, inject a stub, document the gap).
+  sandbox to visually screenshot the new dashboard charts, the Phase 17
+  Products/Orders cards, or the Phase 19 Staff time off card; verified
+  instead by checking the dashboard's inline JS syntax (`node --check`) and
+  by exercising the real endpoints (`GET /api/analytics`, `GET /api/state`,
+  `PATCH /api/products/:id`, `POST /api/staff-time-off`,
+  `PATCH /api/orders/:id`) and full MCP round trips against a live server.
+  Same category of gap as the original FINAL_REPORT.md's
+  no-Docker/no-AWS-credentials notes.
+- No real Twilio account/credentials exist in this sandbox, so
+  `SmsNotificationSink` (Phase 20) was never exercised against the live
+  Twilio API — only against an injected stub client in `test/sms.test.ts`.
+  Without `TWILIO_*` configured, both Phase 12's reminders and Phase 20's
+  order-ready notifications fall back to `ConsoleNotificationSink`
+  (stdout/the activity feed) — the same "implement for real, inject a
+  stub, document the gap" pattern the original submission used for
+  Bedrock in Phase 6.
 
 See PROGRESS_DEV.md for the complete list of every ambiguity and scope
 decision made along the way.

@@ -170,12 +170,27 @@
   .source-row .bar-fill { height: 100%; border-radius: 4px; }
   .source-row .count { flex: 0 0 auto; color: var(--ink-soft); min-width: 1.4em; text-align: right; }
 
-  .add-appt h2 { display: flex; align-items: center; justify-content: space-between; font-size: 1rem; }
-  .add-appt h2 button { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
+  .add-appt h2, .timeoff h2 { display: flex; align-items: center; justify-content: space-between; font-size: 1rem; }
+  .add-appt h2 button, .timeoff h2 button { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
   .add-appt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
   .add-appt-grid select, .add-appt-grid input { width: 100%; }
-  .add-appt .actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
-  .add-appt .error-text { color: var(--now-line); }
+  .add-appt .actions, .timeoff .actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
+  .add-appt .error-text, .timeoff .error-text { color: var(--now-line); }
+  .timeoff-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+  .timeoff-row:last-child { border-bottom: none; }
+  .timeoff-row .label { flex: 1 1 auto; }
+  .timeoff-row button { font-size: 0.75rem; padding: 0.15rem 0.5rem; }
+  .order-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .order-row button { font-size: 0.72rem; padding: 0.1rem 0.4rem; }
+
+  .product-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+  .product-row:last-child { border-bottom: none; }
+  .product-row .pname { flex: 1 1 auto; }
+  .product-row .pname .out { color: var(--now-line); font-size: 0.75rem; margin-left: 0.3rem; }
+  .product-row input[type="number"] { width: 4em; }
+  .product-row button { font-size: 0.75rem; padding: 0.15rem 0.5rem; }
+  .order-row { font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+  .order-row:last-child { border-bottom: none; }
 
   .onboard textarea { width: 100%; min-height: 90px; resize: vertical; }
   .onboard .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
@@ -255,6 +270,33 @@
       </div>
 
       <div class="card">
+        <h2>Products</h2>
+        <div id="products-list"><p class="muted">This business doesn't sell stock-tracked items.</p></div>
+      </div>
+
+      <div class="card">
+        <h2>Orders</h2>
+        <div id="orders-list"><p class="muted">No active orders.</p></div>
+      </div>
+
+      <div class="card timeoff">
+        <h2>Staff time off <button id="timeoff-toggle">+ Add</button></h2>
+        <form id="timeoff-form" style="display:none">
+          <div class="add-appt-grid">
+            <select id="timeoff-staff"></select>
+            <input type="text" id="timeoff-from" placeholder="From, e.g. 2026-10-23T09:00:00-07:00" required>
+            <input type="text" id="timeoff-to" placeholder="To, e.g. 2026-10-23T17:00:00-07:00" required>
+            <input type="text" id="timeoff-reason" placeholder="Reason (optional)">
+          </div>
+          <div class="actions">
+            <button type="submit" class="primary">Add block</button>
+            <span class="muted" id="timeoff-error"></span>
+          </div>
+        </form>
+        <div id="timeoff-list"><p class="muted">No upcoming time off.</p></div>
+      </div>
+
+      <div class="card">
         <h2>Activity</h2>
         <div class="activity-feed" id="activity-feed"><p class="muted">Watching for activity...</p></div>
       </div>
@@ -302,13 +344,29 @@
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
     return res.json();
   }
+  async function patchJSON(path, body) {
+    const res = await fetch(api(path), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
+  async function deleteRequest(path) {
+    const res = await fetch(api(path), { method: "DELETE" });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  }
 
-  const state = { businesses: [], business: null, days: [], selectedDay: 0, now: null, appointments: [], waitlist: [], previewBusiness: null };
+  const state = { businesses: [], business: null, days: [], selectedDay: 0, now: null, appointments: [], waitlist: [], orders: [], staffTimeOff: [], previewBusiness: null };
 
   const dayTabsEl = document.getElementById("day-tabs");
   const timelineEl = document.getElementById("timeline");
   const pickerEl = document.getElementById("business-picker");
   const waitlistEl = document.getElementById("waitlist-list");
+  const productsEl = document.getElementById("products-list");
+  const ordersEl = document.getElementById("orders-list");
+  const timeoffEl = document.getElementById("timeoff-list");
   const activityEl = document.getElementById("activity-feed");
   const briefingTextEl = document.getElementById("briefing-text");
   const mcpEndpointEl = document.getElementById("mcp-endpoint");
@@ -358,6 +416,8 @@
     state.now = data.now;
     state.appointments = data.appointments;
     state.waitlist = data.waitlist;
+    state.orders = data.orders;
+    state.staffTimeOff = data.staffTimeOff;
     mcpEndpointEl.textContent = data.mcpEndpoint;
 
     const todayIso = data.now.slice(0, 10);
@@ -369,8 +429,114 @@
     renderDayTabs(todayIso);
     renderTimeline();
     renderWaitlist();
+    renderProducts();
+    renderOrders();
+    renderTimeOffOptions();
+    renderTimeOff();
     renderAddApptOptions();
     loadAnalytics(businessId);
+  }
+
+  function renderProducts() {
+    const products = (state.businessObj && state.businessObj.products) || [];
+    if (products.length === 0) {
+      productsEl.innerHTML = '<p class="muted">This business doesn\'t sell stock-tracked items.</p>';
+      return;
+    }
+    productsEl.innerHTML = products
+      .map((p) => {
+        const out = p.stockQty === 0 ? '<span class="out">out of stock</span>' : "";
+        return (
+          '<div class="product-row" data-product="' +
+          p.id +
+          '">' +
+          '<span class="pname">' +
+          p.name +
+          " (" +
+          formatCents(p.priceCents) +
+          ")" +
+          out +
+          "</span>" +
+          '<input type="number" min="0" value="' +
+          p.stockQty +
+          '">' +
+          "<button>Save</button>" +
+          "</div>"
+        );
+      })
+      .join("");
+    productsEl.querySelectorAll(".product-row").forEach((row) => {
+      row.querySelector("button").addEventListener("click", async () => {
+        const productId = row.dataset.product;
+        const stockQty = Number(row.querySelector("input").value);
+        try {
+          await patchJSON("/api/products/" + encodeURIComponent(productId), { businessId: state.business, stockQty });
+          await loadState(state.business);
+        } catch (e) {
+          alert("Could not update stock: " + e.message);
+        }
+      });
+    });
+  }
+
+  function formatCents(cents) {
+    const dollars = cents / 100;
+    return "$" + (dollars % 1 === 0 ? dollars : dollars.toFixed(2));
+  }
+
+  function renderOrders() {
+    if (!state.orders || state.orders.length === 0) {
+      ordersEl.innerHTML = '<p class="muted">No active orders.</p>';
+      return;
+    }
+    ordersEl.innerHTML = state.orders
+      .map((o) => {
+        const readyBtn = o.status === "placed" ? `<button data-order="${o.id}" data-set="ready">Mark ready</button>` : "";
+        const pickedUpBtn = `<button data-order="${o.id}" data-set="picked_up">Mark picked up</button>`;
+        return `<div class="order-row"><span>${o.quantity}x ${o.productName} - ${o.customerName} - ${o.pickupLabel} (${o.status}), code ${o.code}</span>${readyBtn}${pickedUpBtn}</div>`;
+      })
+      .join("");
+    ordersEl.querySelectorAll("button[data-order]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await patchJSON("/api/orders/" + encodeURIComponent(btn.dataset.order), { status: btn.dataset.set });
+          await loadState(state.business);
+        } catch (e) {
+          alert("Could not update the order: " + e.message);
+        }
+      });
+    });
+  }
+
+  function renderTimeOffOptions() {
+    const business = state.businessObj;
+    if (!business) return;
+    document.getElementById("timeoff-staff").innerHTML = business.staff.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+  }
+
+  function renderTimeOff() {
+    const business = state.businessObj;
+    if (!state.staffTimeOff || state.staffTimeOff.length === 0) {
+      timeoffEl.innerHTML = '<p class="muted">No upcoming time off.</p>';
+      return;
+    }
+    timeoffEl.innerHTML = state.staffTimeOff
+      .map((t) => {
+        const staffName = business ? (business.staff.find((s) => s.id === t.staffId) || {}).name || t.staffId : t.staffId;
+        const reason = t.reason ? ` (${t.reason})` : "";
+        return `<div class="timeoff-row"><span class="label">${staffName}: ${fmtClock(t.fromIso)} ${t.fromIso.slice(0, 10)} - ${fmtClock(t.toIso)} ${t.toIso.slice(0, 10)}${reason}</span><button data-timeoff="${t.id}">Remove</button></div>`;
+      })
+      .join("");
+    timeoffEl.querySelectorAll("button[data-timeoff]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await deleteRequest("/api/staff-time-off/" + encodeURIComponent(btn.dataset.timeoff));
+          await loadState(state.business);
+        } catch (e) {
+          alert("Could not remove the time-off block: " + e.message);
+        }
+      });
+    });
   }
 
   const ANALYTICS_DAYS = 14;
@@ -706,6 +872,32 @@
       });
       document.getElementById("add-appt-form").reset();
       document.getElementById("add-appt-count").style.display = "none";
+      await loadState(state.business);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.className = "error-text";
+    }
+  });
+
+  document.getElementById("timeoff-toggle").addEventListener("click", () => {
+    const form = document.getElementById("timeoff-form");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("timeoff-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("timeoff-error");
+    errorEl.textContent = "";
+    errorEl.className = "muted";
+    try {
+      await postJSON("/api/staff-time-off", {
+        businessId: state.business,
+        staffId: document.getElementById("timeoff-staff").value,
+        fromIso: document.getElementById("timeoff-from").value,
+        toIso: document.getElementById("timeoff-to").value,
+        reason: document.getElementById("timeoff-reason").value || undefined,
+      });
+      document.getElementById("timeoff-form").reset();
       await loadState(state.business);
     } catch (err) {
       errorEl.textContent = err.message;

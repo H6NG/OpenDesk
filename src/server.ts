@@ -10,7 +10,8 @@ import { registerTools, SERVER_INSTRUCTIONS } from "./mcp/tools.js";
 import { LatencyTracker } from "./latency.js";
 import { bearerAuthMiddleware, registerOAuthRoutes } from "./oauth.js";
 import { registerDashboardRoutes } from "./dashboard.js";
-import { sweepReminders } from "./reminders.js";
+import { sweepReminders, setNotificationSink } from "./reminders.js";
+import { SmsNotificationSink, smsConfigured } from "./sms.js";
 
 const REMINDER_SWEEP_INTERVAL_MS = 30_000;
 
@@ -19,6 +20,12 @@ export async function createApp() {
   const store = await Store.load(config.dataFile);
 
   warmUp(store.data.businesses, store.data.appointments, now().toMillis());
+
+  const smsConfig = { accountSid: config.twilioAccountSid, authToken: config.twilioAuthToken, fromNumber: config.twilioFromNumber };
+  if (smsConfigured(smsConfig)) {
+    setNotificationSink(new SmsNotificationSink(smsConfig));
+  }
+  // Else: the default ConsoleNotificationSink from reminders.ts stays installed.
 
   const reminderInterval = setInterval(() => sweepReminders(store, now().toMillis()), REMINDER_SWEEP_INTERVAL_MS);
   reminderInterval.unref?.();

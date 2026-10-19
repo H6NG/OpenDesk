@@ -41,6 +41,10 @@ export function seedBusinesses(): Business[] {
       { id: "sam", name: "Sam", title: "Barber", serviceIds: ["mens-cut", "beard-trim", "cut-and-beard", "kids-cut"] },
       { id: "priya", name: "Priya", title: "Barber", serviceIds: ["mens-cut", "beard-trim", "cut-and-beard", "kids-cut"] },
     ],
+    products: [
+      { id: "pomade", name: "Matte Pomade", description: "Strong-hold, low-shine styling pomade", priceCents: 1800, stockQty: 6 },
+      { id: "beard-oil", name: "Beard Oil", description: "Sandalwood beard conditioning oil", priceCents: 1500, stockQty: 4 },
+    ],
     bufferMin: 5,
     slotStepMin: 15,
     leadTimeMin: 30,
@@ -110,6 +114,10 @@ export function seedBusinesses(): Business[] {
     ],
     staff: [
       { id: "jess", name: "Jess", title: "Groomer", serviceIds: ["small-dog-groom", "large-dog-groom", "bath", "nail-trim"] },
+    ],
+    products: [
+      { id: "oatmeal-shampoo", name: "Oatmeal Shampoo", description: "Sensitive-skin dog shampoo, 16oz", priceCents: 1600, stockQty: 5 },
+      { id: "dental-chews", name: "Dental Chews (bag)", description: "Grain-free dental chew treats", priceCents: 1200, stockQty: 0 },
     ],
     bufferMin: 10,
     slotStepMin: 15,

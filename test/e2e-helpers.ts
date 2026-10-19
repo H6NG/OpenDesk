@@ -16,6 +16,8 @@ function emptyStoreData(): StoreData {
     businesses: [],
     customers: [{ id: DEMO_CUSTOMER_ID, name: "Alex Rivera", phone: "+1-310-555-0100" }],
     appointments: [],
+    orders: [],
+    staffTimeOff: [],
     waitlist: [],
     events: [],
     oauthCodes: [],
@@ -56,6 +58,10 @@ export function buildNoneModeFixture(): StoreData {
     staff: [
       { id: "sam", name: "Sam", title: "Stylist", serviceIds: ["cut"] },
       { id: "priya", name: "Priya", title: "Stylist", serviceIds: ["cut"] },
+    ],
+    products: [
+      { id: "pomade", name: "Pomade", description: "Styling pomade", priceCents: 1500, stockQty: 3 },
+      { id: "shampoo", name: "Shampoo", description: "Daily shampoo", priceCents: 1000, stockQty: 0 },
     ],
     bufferMin: 0,
     slotStepMin: 15,
@@ -176,6 +182,39 @@ export function buildSpanishLocaleFixture(): StoreData {
     policyNote: "Se requiere 2 horas de aviso para cancelar.",
     createdVia: "seed",
     locale: "es",
+  });
+  return data;
+}
+
+export function buildFrenchLocaleFixture(): StoreData {
+  const data = emptyStoreData();
+  data.businesses.push({
+    id: "shop-fr",
+    name: "Salon Soleil",
+    category: "barber",
+    keywords: ["coupe", "cheveux"],
+    address: "4 Test St",
+    city: "Los Angeles",
+    phone: "+1-310-555-0401",
+    timezone: "America/Los_Angeles",
+    hours: {
+      1: [["09:00", "17:00"]],
+      2: [["09:00", "17:00"]],
+      3: [["09:00", "17:00"]],
+      4: [["09:00", "17:00"]],
+      5: [["09:00", "17:00"]],
+      6: [["09:00", "17:00"]],
+      7: [],
+    },
+    services: [{ id: "coupe", name: "Coupe de Cheveux", durationMin: 30, priceCents: 2500 }],
+    staff: [{ id: "marie", name: "Marie", title: "Coiffeuse", serviceIds: ["coupe"] }],
+    bufferMin: 0,
+    slotStepMin: 15,
+    leadTimeMin: 0,
+    cancelNoticeHours: 2,
+    policyNote: "Un préavis de 2 heures est requis pour annuler.",
+    createdVia: "seed",
+    locale: "fr",
   });
   return data;
 }

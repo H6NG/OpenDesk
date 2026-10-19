@@ -2,12 +2,24 @@ import { isoUtc } from "./clock.js";
 import type { Store } from "./store.js";
 
 export type ReminderKind = "hold_expiring" | "appointment_upcoming";
+export type NotificationKind = ReminderKind | "order_ready";
 
-export interface NotificationSink {
-  notify(message: string, context: { kind: ReminderKind; appointmentId: string }): void | Promise<void>;
+export interface NotificationContext {
+  kind: NotificationKind;
+  /** Set for hold/appointment reminders. */
+  appointmentId?: string;
+  /** Set for order-ready notifications. */
+  orderId?: string;
+  /** Null when the customer has no phone on file; sinks that need a destination (e.g. SMS) should skip and log rather than throw. */
+  customerPhone: string | null;
+  customerName: string;
 }
 
-/** This sandbox has no SMS/push provider, so "sending" a notification means logging it. */
+export interface NotificationSink {
+  notify(message: string, context: NotificationContext): void | Promise<void>;
+}
+
+/** This sandbox has no SMS/push provider configured by default, so "sending" a notification means logging it. */
 export class ConsoleNotificationSink implements NotificationSink {
   notify(message: string): void {
     console.log(`[notify] ${message}`);
@@ -16,9 +28,14 @@ export class ConsoleNotificationSink implements NotificationSink {
 
 let sink: NotificationSink = new ConsoleNotificationSink();
 
-/** Lets tests (and other callers) inject a stub instead of the console sink. */
+/** Lets tests (and other callers, e.g. server.ts choosing a real SMS sink) inject a stub instead of the console sink. */
 export function setNotificationSink(s: NotificationSink): void {
   sink = s;
+}
+
+/** Fires a notification through whichever sink is currently installed. Used by reminders below and by catalog.ts's order-ready flow. */
+export function notify(message: string, context: NotificationContext): void {
+  void sink.notify(message, context);
 }
 
 const HOLD_REMINDER_THRESHOLD = 0.8; // fire once a hold has used 80% of its TTL
@@ -52,7 +69,7 @@ export function sweepReminders(store: Store, nowMs: number): void {
 
 function fire(
   store: Store,
-  appt: { id: string; businessId: string; holdReminderSentAt?: string | null; apptReminderSentAt?: string | null },
+  appt: { id: string; businessId: string; customerId: string; customerName: string; holdReminderSentAt?: string | null; apptReminderSentAt?: string | null },
   nowMs: number,
   field: "holdReminderSentAt" | "apptReminderSentAt",
   kind: ReminderKind,
@@ -61,7 +78,8 @@ function fire(
   appt[field] = isoUtc(nowMs);
   store.touch();
   store.addEvent(appt.businessId, "reminder_sent", message);
-  void sink.notify(message, { kind, appointmentId: appt.id });
+  const customerPhone = store.getCustomer(appt.customerId)?.phone || null;
+  notify(message, { kind, appointmentId: appt.id, customerPhone, customerName: appt.customerName });
 }
 
 function holdExpiringMessage(store: Store, appt: { businessId: string; customerName: string }): string {
