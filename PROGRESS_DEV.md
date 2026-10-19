@@ -8,7 +8,7 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 
 - [x] Phase 11: Manual / walk-in booking from the dashboard
 - [x] Phase 12: Reminder notifications
-- [ ] Phase 13: Recurring appointments
+- [x] Phase 13: Recurring appointments
 - [ ] Phase 14: Dashboard analytics
 - [ ] Phase 15: Spanish voice support (lower priority, last)
 
@@ -68,6 +68,73 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   `/health` still responds correctly with the sweep interval running, then
   killed the process.
 
+- Phase 13: recurring appointments. `src/types.ts` — new `RecurrenceFreq`/
+  `RecurrenceSpec`, plus `Appointment.seriesId` (shared by every occurrence)
+  and `Appointment.pendingRecurrence` (set on a held appointment that
+  requested recurrence; materialized into sibling appointments at confirm
+  time, then cleared). `src/booking.ts`:
+  - `computeOccurrences()` walks weekly/biweekly/monthly from the first
+    start (monthly keeps the same day-of-month, which can drift off the
+    exact weekday — documented below); `validateOccurrences()` checks every
+    occurrence's business-hours fit and double-booking *before* any mutation,
+    so a series is rejected atomically (all-or-nothing), matching the
+    existing hold/confirm all-or-nothing ethos.
+  - `holdAppointment()` takes an optional `recurrence`, stamps a fresh
+    `seriesId` + `pendingRecurrence` onto the held appointment, but only
+    validates/creates the *first* slot (same as before) — the rest of the
+    series isn't materialized until confirm.
+  - `confirmAppointment()`, on a still-held appointment with
+    `pendingRecurrence` set, validates+creates the remaining `count - 1`
+    confirmed siblings in one pass, returning `seriesAppointments` (all
+    members, first included) and `seriesFreq`. If any occurrence conflicts,
+    it throws before mutating anything — the original hold is left exactly
+    as it was (still `"held"`, confirmable again without recurrence, or
+    simply expires).
+  - `createManualAppointment()` (Phase 11's endpoint) takes the same
+    `recurrence` and, since there's no hold step, validates the whole series
+    and creates every occurrence as `"confirmed"` directly, atomically.
+  - `cancelAppointment()` gained a `scope: "this" | "series"` (default
+    `"this"`); `"series"` cancels the target plus every *other* series
+    member with `start >= nowMs` (past occurrences, including ones before
+    the target, are left alone), offering each freed slot to the waitlist
+    same as a normal cancel.
+  - `rescheduleAppointment()` gained the same `scope`. SPEC_DEV.md doesn't
+    define what "reschedule the whole series" means for a single new
+    `new_start` — I chose: compute the delta between the old and new start
+    of the *target* occurrence, then apply that same delta to every future
+    sibling (so a weekly 2pm series moved to 3pm shifts every future
+    occurrence by the same hour). All siblings are validated before any of
+    them (or the target) are mutated, so the whole move is atomic.
+  `src/mcp/speech.ts` — `speakSeriesSummary(freq, remainingCount)` renders
+  "...and 3 more every week after that." `src/mcp/tools.ts`:
+  `hold_appointment` takes `recurrence`; `confirm_appointment` appends the
+  series summary to speech and returns `series_codes`; `cancel_appointment`
+  / `reschedule_appointment` take `scope` and mention the series count in
+  speech; `list_my_appointments` groups series members — only the earliest
+  occurrence of a series gets a spoken line (with "(plus N more in this
+  series)"), but every occurrence is still in the structured `appointments`
+  array with `series_id`/`series_count` so a client can enumerate them.
+  `src/dashboard.ts` — `POST /api/appointments` (Phase 11) now accepts the
+  same `recurrence` shape and returns `seriesAppointments` when present.
+  `public/dashboard.html` — added a repeat-frequency select + occurrence-
+  count input to the add-appointment form (hidden unless a frequency is
+  chosen).
+  New `test/recurrence.test.ts` (6 unit tests against a minimal in-memory
+  fixture business): a 4-occurrence weekly series books atomically; a
+  conflicting occurrence rejects the *whole* series (hold stays `"held"`,
+  no partial series created); `cancel scope:"series"` leaves past
+  occurrences alone but cancels the target and future ones;
+  `reschedule scope:"series"` shifts future siblings by the same delta;
+  `reschedule scope:"this"` (default) leaves siblings untouched; manual
+  booking with recurrence creates every occurrence confirmed directly.
+  New e2e test in `test/e2e.test.ts` (none-mode): a weekly series booked via
+  `hold_appointment`/`confirm_appointment` over MCP produces the
+  "...2 more every week after that" speech and `list_my_appointments`
+  groups the 3 occurrences under one `series_id` with the "(plus 2 more in
+  this series)" speech line.
+  `npm run build` clean; `npm test` 64/64 (57 prior + 1 unit-test-file worth
+  of 6 + 1 e2e).
+
 ## Known issues / ambiguities
 
 - Manual bookings skip the `leadTimeMin` check that voice bookings enforce
@@ -82,8 +149,22 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   `Customer` row each time (never dedups), since there's no reliable key to
   match on. This mirrors how the "Guest" customer is handled elsewhere in
   the codebase.
+- Monthly recurrence (`freq: "monthly"`) keeps the same day-of-month via
+  Luxon's `.plus({ months: 1 })`, which can land on a different weekday
+  than the first occurrence (e.g. the 15th rolls from a Thursday to a
+  Saturday to a Sunday...). SPEC_DEV.md says occurrences repeat on "the
+  same weekday/time", which is only naturally true for weekly/biweekly;
+  for monthly I chose same-day-of-month over same-weekday since "monthly
+  on the 3rd Tuesday" is a much more elaborate rule than this spec asked
+  for, and most real recurring-monthly bookings (e.g. a monthly massage)
+  are described by the customer as "the 15th of every month," not "the
+  3rd Tuesday."
+- Reschedule with `scope: "series"` shifts every future sibling by the same
+  time delta as the target occurrence's move (see Phase 13 log entry above
+  for the reasoning); SPEC_DEV.md doesn't spell out the intended semantics
+  for "reschedule the whole series" given only one new `new_start`.
 
 ## Next step
 
-Phase 13: recurring appointments (`recurrence` input on hold/confirm/manual
-booking, shared `seriesId`, `scope: 'this'|'series'` on cancel/reschedule).
+Phase 14: dashboard analytics (`GET /api/analytics`, 2-3 charts below the
+briefing panel, aggregation-math tests). Load the `dataviz` skill first.

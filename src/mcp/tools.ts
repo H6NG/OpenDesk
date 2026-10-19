@@ -6,7 +6,7 @@ import type { Store } from "../store.js";
 import { formatHours, scoreBusinesses } from "../businesses.js";
 import { findAvailability, isOpenDuringWindow, staffCanPerform, type Slot } from "../availability.js";
 import { parseSpokenWindow, relativeDayLabel } from "../spokenTime.js";
-import { speakAvailability, speakConfirmation, speakHold, formatMoney } from "./speech.js";
+import { speakAvailability, speakConfirmation, speakHold, speakSeriesSummary, formatMoney } from "./speech.js";
 import {
   BookingError,
   cancelAppointment,
@@ -53,6 +53,14 @@ async function guarded(fn: () => CallToolResult): Promise<CallToolResult> {
     return fail(e instanceof Error ? e.message : "Something went wrong. Please try again.");
   }
 }
+
+const recurrenceInputSchema = z
+  .object({
+    freq: z.enum(["weekly", "biweekly", "monthly"]).describe("How often the appointment repeats"),
+    count: z.number().int().min(1).max(52).describe("Total number of occurrences in the series, including this first one"),
+  })
+  .optional()
+  .describe("Book a recurring series at the same weekday/time, staff, and service. Omit for a one-off appointment.");
 
 function slotFromAppointment(store: Store, appointment: { serviceId: string; staffId: string; businessId: string; start: string; end: string }): Slot {
   const business = store.getBusiness(appointment.businessId)!;
@@ -266,6 +274,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         start: z.string().describe("ISO 8601 start time, e.g. from a find_availability slot"),
         staff: z.string().optional(),
         notes: z.string().optional(),
+        recurrence: recurrenceInputSchema,
       },
       outputSchema: {
         speech: z.string(),
@@ -278,7 +287,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
       },
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ business_id, service_id, start, staff, notes }) =>
+    async ({ business_id, service_id, start, staff, notes, recurrence }) =>
       guarded(() => {
         const { appointment, business, staff: chosenStaff } = holdAppointment(store, ctx.nowMs, ctx.customerId, {
           businessId: business_id,
@@ -286,6 +295,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           startIso: start,
           staffHint: staff,
           notes,
+          recurrence,
         });
         const slot = slotFromAppointment(store, appointment);
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
@@ -314,15 +324,24 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         code: z.string(),
         start: z.string(),
         end: z.string(),
+        series_codes: z.array(z.string()).optional(),
       },
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ hold_id }) =>
       guarded(() => {
-        const { appointment, business, service, staff } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
+        const { appointment, business, service, staff, seriesAppointments, seriesFreq } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        const speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz);
-        return ok(speech, { code: appointment.code, start: appointment.start, end: appointment.end });
+        let speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz);
+        if (seriesAppointments && seriesAppointments.length > 1 && seriesFreq) {
+          speech += speakSeriesSummary(seriesFreq, seriesAppointments.length - 1);
+        }
+        return ok(speech, {
+          code: appointment.code,
+          start: appointment.start,
+          end: appointment.end,
+          series_codes: seriesAppointments && seriesAppointments.length > 1 ? seriesAppointments.map((a) => a.code) : undefined,
+        });
       }),
   );
 
@@ -344,6 +363,8 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             start: z.string(),
             status: z.string(),
             is_waitlist_offer: z.boolean(),
+            series_id: z.string().nullable(),
+            series_count: z.number(),
           }),
         ),
       },
@@ -355,6 +376,11 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         if (appts.length === 0) {
           return ok("You don't have any upcoming appointments.", { appointments: [] });
         }
+        const seriesCounts = new Map<string, number>();
+        for (const a of appts) {
+          if (a.seriesId) seriesCounts.set(a.seriesId, (seriesCounts.get(a.seriesId) ?? 0) + 1);
+        }
+        const seenSeries = new Set<string>();
         const rows = appts.map((a) => {
           const business = store.getBusiness(a.businessId)!;
           const service = business.services.find((s) => s.id === a.serviceId)!;
@@ -362,6 +388,10 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
           const isOffer = a.holdKind === "waitlist_offer";
           const when = relativeDayLabel(DateTime.fromISO(a.start, { setZone: true }), nowBiz);
+          const seriesCount = a.seriesId ? seriesCounts.get(a.seriesId)! : 1;
+          const isFirstOfSeries = !a.seriesId || !seenSeries.has(a.seriesId);
+          if (a.seriesId) seenSeries.add(a.seriesId);
+          const seriesSuffix = a.seriesId && seriesCount > 1 ? ` (plus ${seriesCount - 1} more in this series)` : "";
           return {
             id: a.id,
             code: a.code,
@@ -371,12 +401,17 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             start: a.start,
             status: a.status,
             is_waitlist_offer: isOffer,
-            _speechLine: isOffer
-              ? `Good news: a spot opened up for ${service.name} at ${business.name} on ${when} with ${staff.name}; say confirm to grab it.`
-              : `${service.name} at ${business.name} with ${staff.name} on ${when}, code ${a.code}`,
+            series_id: a.seriesId ?? null,
+            series_count: seriesCount,
+            _speechLine: !isFirstOfSeries
+              ? null
+              : isOffer
+                ? `Good news: a spot opened up for ${service.name} at ${business.name} on ${when} with ${staff.name}; say confirm to grab it.`
+                : `${service.name} at ${business.name} with ${staff.name} on ${when}, code ${a.code}${seriesSuffix}`,
           };
         });
-        const speech = `You have ${rows.length} appointment${rows.length === 1 ? "" : "s"}: ${rows.map((r) => r._speechLine).join(". ")}.`;
+        const speechLines = rows.map((r) => r._speechLine).filter((l): l is string => l !== null);
+        const speech = `You have ${rows.length} appointment${rows.length === 1 ? "" : "s"}: ${speechLines.join(". ")}.`;
         return ok(speech, { appointments: rows.map(({ _speechLine, ...rest }) => rest) });
       }),
   );
@@ -391,27 +426,33 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         code: z.string().optional(),
         new_start: z.string().describe("ISO 8601 new start time"),
         staff: z.string().optional(),
+        scope: z.enum(["this", "series"]).optional().describe("'series' also shifts every future occurrence of a recurring series by the same amount. Defaults to 'this'."),
       },
       outputSchema: {
         speech: z.string(),
         start: z.string(),
         end: z.string(),
         staff_name: z.string(),
+        series_shifted_count: z.number().optional(),
       },
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
     },
-    async ({ appointment_id, code, new_start, staff }) =>
+    async ({ appointment_id, code, new_start, staff, scope }) =>
       guarded(() => {
         const idOrCode = appointment_id ?? code;
         if (!idOrCode) return fail("I need either the appointment id or the confirmation code to reschedule it.");
-        const { appointment, business, staff: newStaff } = rescheduleAppointment(store, ctx.nowMs, ctx.customerId, {
+        const { appointment, business, staff: newStaff, seriesShiftedCount } = rescheduleAppointment(store, ctx.nowMs, ctx.customerId, {
           idOrCode,
           newStartIso: new_start,
           staffHint: staff,
+          scope,
         });
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        const speech = `Done. Your appointment is now ${relativeDayLabel(DateTime.fromISO(appointment.start, { setZone: true }), nowBiz)} with ${newStaff.name}.`;
-        return ok(speech, { start: appointment.start, end: appointment.end, staff_name: newStaff.name });
+        let speech = `Done. Your appointment is now ${relativeDayLabel(DateTime.fromISO(appointment.start, { setZone: true }), nowBiz)} with ${newStaff.name}.`;
+        if (seriesShiftedCount && seriesShiftedCount > 1) {
+          speech += ` I moved the rest of the series too — ${seriesShiftedCount - 1} more occurrence${seriesShiftedCount - 1 === 1 ? "" : "s"}.`;
+        }
+        return ok(speech, { start: appointment.start, end: appointment.end, staff_name: newStaff.name, series_shifted_count: seriesShiftedCount });
       }),
   );
 
@@ -423,26 +464,31 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
       inputSchema: {
         appointment_id: z.string().optional(),
         code: z.string().optional(),
+        scope: z.enum(["this", "series"]).optional().describe("'series' also cancels every future occurrence of a recurring series. Past occurrences are left alone. Defaults to 'this'."),
       },
       outputSchema: {
         speech: z.string(),
         cancelled: z.boolean(),
         late_fee_warning: z.boolean(),
+        series_cancelled_count: z.number().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ appointment_id, code }) =>
+    async ({ appointment_id, code, scope }) =>
       guarded(() => {
         const idOrCode = appointment_id ?? code;
         if (!idOrCode) return fail("I need either the appointment id or the confirmation code to cancel it.");
-        const { alreadyCancelled, lateFee, business } = cancelAppointment(store, ctx.nowMs, ctx.customerId, idOrCode);
+        const { alreadyCancelled, lateFee, business, seriesCancelledCount } = cancelAppointment(store, ctx.nowMs, ctx.customerId, idOrCode, scope);
         if (alreadyCancelled) {
           return ok("That appointment is already cancelled.", { cancelled: true, late_fee_warning: false });
         }
-        const speech = lateFee
+        let speech = lateFee
           ? `Cancelled. Since that's within ${business.cancelNoticeHours} hours of the appointment, a late cancellation fee may apply.`
           : "Cancelled. No fee since you gave enough notice.";
-        return ok(speech, { cancelled: true, late_fee_warning: lateFee });
+        if (seriesCancelledCount && seriesCancelledCount > 1) {
+          speech += ` I also cancelled the other ${seriesCancelledCount - 1} upcoming occurrence${seriesCancelledCount - 1 === 1 ? "" : "s"} in the series.`;
+        }
+        return ok(speech, { cancelled: true, late_fee_warning: lateFee, series_cancelled_count: seriesCancelledCount });
       }),
   );
 

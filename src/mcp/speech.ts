@@ -64,3 +64,10 @@ export function speakConfirmation(code: string, serviceName: string, staffName: 
   const when = speakDateTime(DateTime.fromISO(start, { setZone: true }), nowBiz);
   return `You're booked for ${serviceName} with ${staffName}, ${when}. Your confirmation code is ${speakCode(code)}.`;
 }
+
+/** "...and 3 more every week after that." */
+export function speakSeriesSummary(freq: "weekly" | "biweekly" | "monthly", remainingCount: number): string {
+  if (remainingCount <= 0) return "";
+  const cadence = freq === "weekly" ? "every week" : freq === "biweekly" ? "every other week" : "every month";
+  return ` ...and ${remainingCount} more ${cadence} after that.`;
+}

@@ -259,6 +259,32 @@ describe("e2e: none mode", () => {
       assert.match(body.error, /already booked/i);
     });
   });
+
+  describe("Phase 13: recurring appointments", () => {
+    it("books a weekly series via hold+confirm, speech mentions it, and list_my_appointments groups the series", async () => {
+      const start = "2026-10-22T10:00:00.000-07:00"; // Thursday, untouched by earlier tests
+      const hold = await timedCallTool(client, "hold_appointment", {
+        business_id: "shop-a",
+        service_id: "cut",
+        start,
+        staff: "Sam",
+        recurrence: { freq: "weekly", count: 3 },
+      });
+      assert.equal(hold.isError, undefined);
+
+      const confirm = await timedCallTool(client, "confirm_appointment", { hold_id: hold.structuredContent!.hold_id as string });
+      assert.equal(confirm.isError, undefined);
+      assert.match(confirm.structuredContent!.speech as string, /2 more every week after that/);
+      assert.equal((confirm.structuredContent!.series_codes as string[]).length, 3);
+
+      const list = await timedCallTool(client, "list_my_appointments", {});
+      const appts = list.structuredContent!.appointments as { series_count: number; series_id: string | null }[];
+      const seriesRows = appts.filter((a) => a.series_count === 3);
+      assert.equal(seriesRows.length, 3);
+      assert.equal(new Set(seriesRows.map((a) => a.series_id)).size, 1);
+      assert.match(list.structuredContent!.speech as string, /plus 2 more in this series/);
+    });
+  });
 });
 
 describe("e2e: oauth mode", () => {

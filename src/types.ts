@@ -54,6 +54,12 @@ export interface Customer {
 export type AppointmentStatus = "held" | "confirmed" | "cancelled" | "expired";
 export type HoldKind = "customer" | "waitlist_offer";
 export type AppointmentSource = "alexa" | "phone" | "walk-in";
+export type RecurrenceFreq = "weekly" | "biweekly" | "monthly";
+export interface RecurrenceSpec {
+  freq: RecurrenceFreq;
+  /** Total number of occurrences in the series, including this one. */
+  count: number;
+}
 
 export interface Appointment {
   id: string;
@@ -75,6 +81,10 @@ export interface Appointment {
   /** Idempotency markers for reminders.ts; absent/null means not yet sent. */
   holdReminderSentAt?: string | null;
   apptReminderSentAt?: string | null;
+  /** Shared by every occurrence of a recurring series, including this one. */
+  seriesId?: string | null;
+  /** Set on a held appointment that requested recurrence; materialized into sibling appointments at confirm time, then cleared. */
+  pendingRecurrence?: RecurrenceSpec | null;
 }
 
 export interface WaitlistEntry {

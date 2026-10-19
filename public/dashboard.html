@@ -206,6 +206,13 @@
               <option value="phone">Phone</option>
               <option value="walk-in">Walk-in</option>
             </select>
+            <select id="add-appt-freq">
+              <option value="">One-off (no repeat)</option>
+              <option value="weekly">Repeats weekly</option>
+              <option value="biweekly">Repeats every other week</option>
+              <option value="monthly">Repeats monthly</option>
+            </select>
+            <input type="number" id="add-appt-count" min="2" max="52" placeholder="Number of occurrences" style="display:none">
           </div>
           <div class="actions">
             <button type="submit" class="primary">Book it</button>
@@ -591,11 +598,17 @@
     form.style.display = form.style.display === "none" ? "block" : "none";
   });
 
+  document.getElementById("add-appt-freq").addEventListener("change", (e) => {
+    document.getElementById("add-appt-count").style.display = e.target.value ? "block" : "none";
+  });
+
   document.getElementById("add-appt-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const errorEl = document.getElementById("add-appt-error");
     errorEl.textContent = "";
     errorEl.className = "muted";
+    const freq = document.getElementById("add-appt-freq").value;
+    const count = Number(document.getElementById("add-appt-count").value);
     try {
       await postJSON("/api/appointments", {
         businessId: state.business,
@@ -605,8 +618,10 @@
         customerName: document.getElementById("add-appt-name").value,
         customerPhone: document.getElementById("add-appt-phone").value || undefined,
         source: document.getElementById("add-appt-source").value,
+        recurrence: freq && count >= 2 ? { freq, count } : undefined,
       });
       document.getElementById("add-appt-form").reset();
+      document.getElementById("add-appt-count").style.display = "none";
       await loadState(state.business);
     } catch (err) {
       errorEl.textContent = err.message;

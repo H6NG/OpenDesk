@@ -81,7 +81,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
 
   app.post("/api/appointments", ...api, (req, res) => {
     const body = req.body ?? {};
-    const { businessId, serviceId, staffId, customerName, customerPhone, start, source, notes } = body;
+    const { businessId, serviceId, staffId, customerName, customerPhone, start, source, notes, recurrence } = body;
     if (
       typeof businessId !== "string" ||
       typeof serviceId !== "string" ||
@@ -94,8 +94,12 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       res.status(400).json({ error: "businessId, serviceId, staffId, customerName, start, and source ('phone'|'walk-in') are required." });
       return;
     }
+    const validRecurrence =
+      recurrence && typeof recurrence === "object" && ["weekly", "biweekly", "monthly"].includes(recurrence.freq) && Number.isInteger(recurrence.count)
+        ? { freq: recurrence.freq, count: recurrence.count }
+        : undefined;
     try {
-      const { appointment } = createManualAppointment(store, now().toMillis(), {
+      const { appointment, seriesAppointments } = createManualAppointment(store, now().toMillis(), {
         businessId,
         serviceId,
         staffId,
@@ -104,8 +108,9 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
         startIso: start,
         source,
         notes: typeof notes === "string" ? notes : undefined,
+        recurrence: validRecurrence,
       });
-      res.status(201).json({ appointment });
+      res.status(201).json({ appointment, seriesAppointments });
     } catch (e) {
       if (e instanceof BookingError) {
         res.status(400).json({ error: e.message });

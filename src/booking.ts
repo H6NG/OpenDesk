@@ -8,7 +8,7 @@ import {
 } from "./availability.js";
 import { newId, randomCode } from "./codes.js";
 import type { Store } from "./store.js";
-import type { Appointment, AppointmentSource, Business, Customer, Service, Staff, WaitlistEntry } from "./types.js";
+import type { Appointment, AppointmentSource, Business, Customer, RecurrenceFreq, RecurrenceSpec, Service, Staff, WaitlistEntry } from "./types.js";
 
 export class BookingError extends Error {
   constructor(message: string) {
@@ -71,17 +71,63 @@ export interface HoldResult {
   business: Business;
   service: Service;
   staff: Staff;
+  seriesAppointments?: Appointment[];
+  seriesFreq?: RecurrenceFreq;
+}
+
+/** Same weekday/time (monthly keeps the same day-of-month), count occurrences including the first. */
+function computeOccurrences(firstStartIso: string, freq: RecurrenceFreq, count: number, timezone: string): DateTime[] {
+  const first = DateTime.fromISO(firstStartIso, { zone: timezone });
+  const occurrences = [first];
+  for (let i = 1; i < count; i++) {
+    const prev = occurrences[i - 1];
+    const next = freq === "weekly" ? prev.plus({ weeks: 1 }) : freq === "biweekly" ? prev.plus({ weeks: 2 }) : prev.plus({ months: 1 });
+    occurrences.push(next);
+  }
+  return occurrences;
+}
+
+/** Validates every occurrence (optionally skipping the first, already checked by the caller) without mutating anything, so the whole series can be rejected atomically. */
+function validateOccurrences(
+  store: Store,
+  nowMs: number,
+  business: Business,
+  service: Service,
+  staff: Staff,
+  occurrences: DateTime[],
+  skipFirst: boolean,
+): void {
+  for (let i = skipFirst ? 1 : 0; i < occurrences.length; i++) {
+    const startMs = occurrences[i].toMillis();
+    if (!fitsBusinessHours(business, startMs, service.durationMin)) {
+      throw new BookingError(
+        `${business.name} is closed on ${occurrences[i].toFormat("cccc, LLL d")}, so the whole series can't be booked as requested.`,
+      );
+    }
+    if (!isSlotFree(business, store.data.appointments, staff.id, startMs, service.durationMin, nowMs)) {
+      throw new BookingError(
+        `${staff.name} is already booked on ${occurrences[i].toFormat("cccc, LLL d")}, so the whole series can't be booked as requested.`,
+      );
+    }
+  }
+}
+
+function validateRecurrence(recurrence: RecurrenceSpec): void {
+  if (!Number.isInteger(recurrence.count) || recurrence.count < 1) {
+    throw new BookingError("Recurrence count must be at least 1.");
+  }
 }
 
 export function holdAppointment(
   store: Store,
   nowMs: number,
   customerId: string,
-  params: { businessId: string; serviceId: string; startIso: string; staffHint?: string; notes?: string },
+  params: { businessId: string; serviceId: string; startIso: string; staffHint?: string; notes?: string; recurrence?: RecurrenceSpec },
 ): HoldResult {
   const business = requireBusiness(store, params.businessId);
   const service = requireService(business, params.serviceId);
   const candidates = resolveStaff(business, service, params.staffHint);
+  if (params.recurrence) validateRecurrence(params.recurrence);
 
   const startMs = Date.parse(params.startIso);
   if (Number.isNaN(startMs)) throw new BookingError("I couldn't understand that start time. Try find_availability to get a valid time.");
@@ -125,12 +171,18 @@ export function holdAppointment(
     notes: params.notes ?? "",
     createdAt: nowIso,
     updatedAt: nowIso,
+    seriesId: params.recurrence ? newId("series") : null,
+    pendingRecurrence: params.recurrence ?? null,
   };
   store.data.appointments.push(appointment);
   store.touch();
   store.addEvent(business.id, "held", `${appointment.customerName} is holding ${service.name} with ${chosenStaff.name}`);
 
   return { appointment, business, service, staff: chosenStaff };
+}
+
+function seriesSiblings(store: Store, seriesId: string): Appointment[] {
+  return store.data.appointments.filter((a) => a.seriesId === seriesId).sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
 }
 
 export function confirmAppointment(store: Store, nowMs: number, customerId: string, holdId: string): HoldResult {
@@ -144,14 +196,54 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
   const staff = business.staff.find((s) => s.id === appointment.staffId)!;
 
   if (appointment.status === "confirmed") {
-    return { appointment, business, service, staff }; // idempotent
+    const seriesAppointments = appointment.seriesId ? seriesSiblings(store, appointment.seriesId) : undefined;
+    return { appointment, business, service, staff, seriesAppointments }; // idempotent
   }
   if (appointment.status !== "held") {
     throw new BookingError("That hold expired. Use find_availability for a new time.");
   }
 
+  let seriesAppointments: Appointment[] | undefined;
+  let seriesFreq: RecurrenceFreq | undefined;
+  if (appointment.pendingRecurrence) {
+    const { freq, count } = appointment.pendingRecurrence;
+    seriesFreq = freq;
+    const occurrences = computeOccurrences(appointment.start, freq, count, business.timezone);
+    validateOccurrences(store, nowMs, business, service, staff, occurrences, true);
+
+    const nowIso = isoUtc(nowMs);
+    const created: Appointment[] = [];
+    for (let i = 1; i < occurrences.length; i++) {
+      const start = occurrences[i];
+      const end = start.plus({ minutes: service.durationMin });
+      const sibling: Appointment = {
+        id: newId("appt"),
+        code: randomCode(),
+        businessId: business.id,
+        serviceId: service.id,
+        staffId: staff.id,
+        customerId: appointment.customerId,
+        customerName: appointment.customerName,
+        start: start.toISO()!,
+        end: end.toISO()!,
+        status: "confirmed",
+        holdExpiresAt: null,
+        holdKind: null,
+        source: appointment.source,
+        notes: appointment.notes,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        seriesId: appointment.seriesId,
+      };
+      store.data.appointments.push(sibling);
+      created.push(sibling);
+    }
+    seriesAppointments = [appointment, ...created];
+  }
+
   appointment.status = "confirmed";
   appointment.holdExpiresAt = null;
+  appointment.pendingRecurrence = null;
   appointment.updatedAt = isoUtc(nowMs);
   store.touch();
 
@@ -159,9 +251,10 @@ export function confirmAppointment(store: Store, nowMs: number, customerId: stri
     const entry = store.data.waitlist.find((w) => w.offerAppointmentId === appointment.id);
     if (entry) entry.status = "fulfilled";
   }
-  store.addEvent(business.id, "booked", `${appointment.customerName} booked ${service.name} with ${staff.name}, code ${appointment.code}`);
+  const seriesNote = seriesAppointments && seriesAppointments.length > 1 ? ` (series of ${seriesAppointments.length})` : "";
+  store.addEvent(business.id, "booked", `${appointment.customerName} booked ${service.name} with ${staff.name}${seriesNote}, code ${appointment.code}`);
 
-  return { appointment, business, service, staff };
+  return { appointment, business, service, staff, seriesAppointments, seriesFreq };
 }
 
 export interface ManualBookResult {
@@ -169,12 +262,15 @@ export interface ManualBookResult {
   business: Business;
   service: Service;
   staff: Staff;
+  seriesAppointments?: Appointment[];
 }
 
 /**
  * Creates a confirmed appointment directly, for a staff member taking a
  * phone call or walk-in — no hold step, since a human (not the 5-minute
- * voice hold) is doing the booking in real time.
+ * voice hold) is doing the booking in real time. If `recurrence` is given,
+ * every occurrence is validated before any of them are created, so the
+ * whole series books atomically or not at all.
  */
 export function createManualAppointment(
   store: Store,
@@ -188,6 +284,7 @@ export function createManualAppointment(
     startIso: string;
     source: AppointmentSource;
     notes?: string;
+    recurrence?: RecurrenceSpec;
   },
 ): ManualBookResult {
   const business = requireBusiness(store, params.businessId);
@@ -197,6 +294,7 @@ export function createManualAppointment(
   if (!staffCanPerform(staff, service.id)) {
     throw new BookingError(`${staff.name} doesn't perform ${service.name} at ${business.name}.`);
   }
+  if (params.recurrence) validateRecurrence(params.recurrence);
 
   const startMs = Date.parse(params.startIso);
   if (Number.isNaN(startMs)) throw new BookingError("I couldn't understand that start time.");
@@ -207,6 +305,10 @@ export function createManualAppointment(
     throw new BookingError("That slot is already booked for that staff member.");
   }
 
+  const start = DateTime.fromMillis(startMs, { zone: business.timezone });
+  const occurrences = params.recurrence ? computeOccurrences(start.toISO()!, params.recurrence.freq, params.recurrence.count, business.timezone) : [start];
+  if (params.recurrence) validateOccurrences(store, nowMs, business, service, staff, occurrences, true);
+
   const customer: Customer = params.customerPhone
     ? store.upsertCustomerByPhone(params.customerName, params.customerPhone)
     : (() => {
@@ -216,37 +318,40 @@ export function createManualAppointment(
         return c;
       })();
 
-  const start = DateTime.fromMillis(startMs, { zone: business.timezone });
-  const end = start.plus({ minutes: service.durationMin });
+  const seriesId = occurrences.length > 1 ? newId("series") : null;
   const nowIso = isoUtc(nowMs);
-
-  const appointment: Appointment = {
-    id: newId("appt"),
-    code: randomCode(),
-    businessId: business.id,
-    serviceId: service.id,
-    staffId: staff.id,
-    customerId: customer.id,
-    customerName: customer.name,
-    start: start.toISO()!,
-    end: end.toISO()!,
-    status: "confirmed",
-    holdExpiresAt: null,
-    holdKind: null,
-    source: params.source,
-    notes: params.notes ?? "",
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  };
-  store.data.appointments.push(appointment);
+  const created: Appointment[] = occurrences.map((occStart) => {
+    const end = occStart.plus({ minutes: service.durationMin });
+    return {
+      id: newId("appt"),
+      code: randomCode(),
+      businessId: business.id,
+      serviceId: service.id,
+      staffId: staff.id,
+      customerId: customer.id,
+      customerName: customer.name,
+      start: occStart.toISO()!,
+      end: end.toISO()!,
+      status: "confirmed",
+      holdExpiresAt: null,
+      holdKind: null,
+      source: params.source,
+      notes: params.notes ?? "",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      seriesId,
+    };
+  });
+  store.data.appointments.push(...created);
   store.touch();
+  const seriesNote = created.length > 1 ? ` (series of ${created.length})` : "";
   store.addEvent(
     business.id,
     "booked",
-    `${appointment.customerName} booked ${service.name} with ${staff.name} by ${params.source}, code ${appointment.code}`,
+    `${created[0].customerName} booked ${service.name} with ${staff.name} by ${params.source}${seriesNote}, code ${created[0].code}`,
   );
 
-  return { appointment, business, service, staff };
+  return { appointment: created[0], business, service, staff, seriesAppointments: created.length > 1 ? created : undefined };
 }
 
 function windowCoversStart(entry: WaitlistEntry, startIso: string, timezone: string): boolean {
@@ -310,9 +415,16 @@ export interface CancelResult {
   lateFee: boolean;
   alreadyCancelled: boolean;
   waitlistOffered: Appointment | null;
+  seriesCancelledCount?: number;
 }
 
-export function cancelAppointment(store: Store, nowMs: number, customerId: string, idOrCode: string): CancelResult {
+export function cancelAppointment(
+  store: Store,
+  nowMs: number,
+  customerId: string,
+  idOrCode: string,
+  scope: "this" | "series" = "this",
+): CancelResult {
   sweepExpiredHolds(store, nowMs);
   const appointment = findAppointmentByIdOrCode(store, idOrCode);
   if (!appointment) throw new BookingError("I couldn't find that appointment. Use list_my_appointments to check the code.");
@@ -336,7 +448,32 @@ export function cancelAppointment(store: Store, nowMs: number, customerId: strin
 
   const waitlistOffered = offerFreedSlotToWaitlist(store, nowMs, business, appointment);
 
-  return { appointment, business, service, lateFee, alreadyCancelled: false, waitlistOffered };
+  let seriesCancelledCount: number | undefined;
+  if (scope === "series" && appointment.seriesId) {
+    const futureSiblings = store.data.appointments.filter(
+      (a) =>
+        a.seriesId === appointment.seriesId &&
+        a.id !== appointment.id &&
+        (a.status === "held" || a.status === "confirmed") &&
+        Date.parse(a.start) >= nowMs,
+    );
+    for (const sibling of futureSiblings) {
+      sibling.status = "cancelled";
+      sibling.updatedAt = isoUtc(nowMs);
+      offerFreedSlotToWaitlist(store, nowMs, business, sibling);
+    }
+    if (futureSiblings.length > 0) {
+      store.touch();
+      store.addEvent(
+        business.id,
+        "cancelled",
+        `${appointment.customerName} cancelled the rest of the ${service.name} series (${futureSiblings.length} more occurrence${futureSiblings.length === 1 ? "" : "s"})`,
+      );
+    }
+    seriesCancelledCount = futureSiblings.length + 1;
+  }
+
+  return { appointment, business, service, lateFee, alreadyCancelled: false, waitlistOffered, seriesCancelledCount };
 }
 
 export interface RescheduleResult {
@@ -345,13 +482,14 @@ export interface RescheduleResult {
   service: Service;
   staff: Staff;
   waitlistOffered: Appointment | null;
+  seriesShiftedCount?: number;
 }
 
 export function rescheduleAppointment(
   store: Store,
   nowMs: number,
   customerId: string,
-  params: { idOrCode: string; newStartIso: string; staffHint?: string },
+  params: { idOrCode: string; newStartIso: string; staffHint?: string; scope?: "this" | "series" },
 ): RescheduleResult {
   sweepExpiredHolds(store, nowMs);
   const appointment = findAppointmentByIdOrCode(store, params.idOrCode);
@@ -380,6 +518,36 @@ export function rescheduleAppointment(
     throw new BookingError("That new time just got taken. Use find_availability again for another time.");
   }
 
+  // Shifting the whole series preserves the gap between occurrences: every
+  // future sibling moves by the same delta as this one. Validate all of
+  // them before mutating anything, so the whole move is atomic.
+  const scope = params.scope ?? "this";
+  const deltaMs = newStartMs - Date.parse(appointment.start);
+  let futureSiblings: Appointment[] = [];
+  if (scope === "series" && appointment.seriesId) {
+    futureSiblings = store.data.appointments.filter(
+      (a) =>
+        a.seriesId === appointment.seriesId &&
+        a.id !== appointment.id &&
+        (a.status === "held" || a.status === "confirmed") &&
+        Date.parse(a.start) >= nowMs,
+    );
+    for (const sibling of futureSiblings) {
+      const siblingNewStartMs = Date.parse(sibling.start) + deltaMs;
+      const siblingStaffId = params.staffHint ? newStaff.id : sibling.staffId;
+      if (!fitsBusinessHours(business, siblingNewStartMs, service.durationMin)) {
+        throw new BookingError(
+          `${business.name} is closed on ${DateTime.fromMillis(siblingNewStartMs, { zone: business.timezone }).toFormat("cccc, LLL d")}, so the whole series can't move that way.`,
+        );
+      }
+      if (!isSlotFree(business, store.data.appointments, siblingStaffId, siblingNewStartMs, service.durationMin, nowMs, sibling.id)) {
+        throw new BookingError(
+          `That staff member is already booked on ${DateTime.fromMillis(siblingNewStartMs, { zone: business.timezone }).toFormat("cccc, LLL d")}, so the whole series can't move that way.`,
+        );
+      }
+    }
+  }
+
   const freedSnapshot: Appointment = { ...appointment };
 
   const start = DateTime.fromMillis(newStartMs, { zone: business.timezone });
@@ -388,12 +556,23 @@ export function rescheduleAppointment(
   appointment.end = end.toISO()!;
   appointment.staffId = newStaff.id;
   appointment.updatedAt = isoUtc(nowMs);
+
+  for (const sibling of futureSiblings) {
+    const siblingNewStartMs = Date.parse(sibling.start) + deltaMs;
+    const siblingStart = DateTime.fromMillis(siblingNewStartMs, { zone: business.timezone });
+    const siblingEnd = siblingStart.plus({ minutes: service.durationMin });
+    sibling.start = siblingStart.toISO()!;
+    sibling.end = siblingEnd.toISO()!;
+    if (params.staffHint) sibling.staffId = newStaff.id;
+    sibling.updatedAt = isoUtc(nowMs);
+  }
+
   store.touch();
   store.addEvent(business.id, "rescheduled", `${appointment.customerName} moved ${service.name} to ${appointment.start}`);
 
   const waitlistOffered = offerFreedSlotToWaitlist(store, nowMs, business, freedSnapshot);
 
-  return { appointment, business, service, staff: newStaff, waitlistOffered };
+  return { appointment, business, service, staff: newStaff, waitlistOffered, seriesShiftedCount: futureSiblings.length > 0 ? futureSiblings.length + 1 : undefined };
 }
 
 export function listMyAppointments(store: Store, nowMs: number, customerId: string): Appointment[] {
