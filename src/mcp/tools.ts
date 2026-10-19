@@ -8,6 +8,21 @@ import { findAvailability, isOpenDuringWindow, staffCanPerform, type Slot } from
 import { parseSpokenWindow, relativeDayLabel } from "../spokenTime.js";
 import { speakAvailability, speakConfirmation, speakHold, speakSeriesSummary, formatMoney } from "./speech.js";
 import {
+  sayServicePriceList,
+  sayBusinessSummary,
+  sayBusinessClosed,
+  sayFullyBooked,
+  sayNoAppointments,
+  sayAppointmentLine,
+  sayWaitlistOfferLine,
+  sayAppointmentSummary,
+  sayRescheduled,
+  sayCancelled,
+  sayAlreadyCancelled,
+  sayWaitlistJoined,
+} from "../i18n.js";
+import type { Locale } from "../types.js";
+import {
   BookingError,
   cancelAppointment,
   confirmAppointment,
@@ -144,9 +159,10 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
     async ({ business_id }) =>
       guarded(() => {
         const business = requireBusiness(store, business_id);
+        const locale: Locale = business.locale ?? "en";
         const hoursText = formatHours(business);
-        const serviceNames = business.services.map((s) => `${s.name} for ${formatMoney(s.priceCents)}`).join(", ");
-        const speech = `${business.name}: ${serviceNames}. Hours: ${hoursText}. ${business.policyNote}`;
+        const serviceNames = sayServicePriceList(business.services, formatMoney, locale);
+        const speech = sayBusinessSummary(business.name, serviceNames, hoursText, business.policyNote, locale);
         return ok(speech, {
           business_id: business.id,
           name: business.name,
@@ -188,6 +204,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
       guarded(() => {
         const business = requireBusiness(store, business_id);
         const service = requireService(business, service_id);
+        const locale: Locale = business.locale ?? "en";
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
 
         let staffId: string | undefined;
@@ -201,7 +218,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
 
         const window = date
           ? { fromDay: date, toDay: date, label: date }
-          : parseSpokenWindow(when ?? "", nowBiz);
+          : parseSpokenWindow(when ?? "", nowBiz, 14, locale);
         const effectiveLimit = limit ?? 3;
 
         const slots = findAvailability({
@@ -217,17 +234,16 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         const toOutputSlot = (s: Slot) => ({ start: s.start, end: s.end, staff_id: s.staffId, staff_name: s.staffName, price_cents: s.priceCents });
 
         if (slots.length > 0) {
-          return ok(speakAvailability(slots, nowBiz), { slots: slots.map(toOutputSlot), can_join_waitlist: false });
+          return ok(speakAvailability(slots, nowBiz, locale), { slots: slots.map(toOutputSlot), can_join_waitlist: false });
         }
 
         const open = isOpenDuringWindow(business, window.fromDay, window.toDay);
         if (!open) {
           const label =
             window.fromDay === window.toDay
-              ? relativeDayLabel(DateTime.fromISO(window.fromDay, { zone: business.timezone }), nowBiz)
+              ? relativeDayLabel(DateTime.fromISO(window.fromDay, { zone: business.timezone }), nowBiz, locale)
               : null;
-          const speech = label ? `${business.name} is closed ${label}.` : `${business.name} is closed the whole time you asked about.`;
-          return ok(speech, { slots: [], can_join_waitlist: false });
+          return ok(sayBusinessClosed(business.name, label, locale), { slots: [], can_join_waitlist: false });
         }
 
         const altFrom = DateTime.fromISO(window.toDay).plus({ days: 1 }).toISODate()!;
@@ -253,10 +269,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           });
         }
 
-        const speech =
-          alternatives.length > 0
-            ? `${business.name} is fully booked then. The next opening I see is ${speakAvailability(alternatives, nowBiz)} Want me to add you to the waitlist for your original time instead?`
-            : `${business.name} is fully booked for the next week. Want me to add you to the waitlist?`;
+        const speech = sayFullyBooked(business.name, alternatives.length > 0 ? speakAvailability(alternatives, nowBiz, locale) : null, locale);
 
         return ok(speech, { slots: [], alternatives: alternatives.map(toOutputSlot), can_join_waitlist: true });
       }),
@@ -299,7 +312,7 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         });
         const slot = slotFromAppointment(store, appointment);
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        const speech = speakHold(slot, business.name, nowBiz);
+        const speech = speakHold(slot, business.name, nowBiz, business.locale ?? "en");
         return ok(speech, {
           hold_id: appointment.id,
           expires_at: appointment.holdExpiresAt,
@@ -331,10 +344,11 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
     async ({ hold_id }) =>
       guarded(() => {
         const { appointment, business, service, staff, seriesAppointments, seriesFreq } = confirmAppointment(store, ctx.nowMs, ctx.customerId, hold_id);
+        const locale: Locale = business.locale ?? "en";
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        let speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz);
+        let speech = speakConfirmation(appointment.code, service.name, staff.name, appointment.start, nowBiz, locale);
         if (seriesAppointments && seriesAppointments.length > 1 && seriesFreq) {
-          speech += speakSeriesSummary(seriesFreq, seriesAppointments.length - 1);
+          speech += speakSeriesSummary(seriesFreq, seriesAppointments.length - 1, locale);
         }
         return ok(speech, {
           code: appointment.code,
@@ -373,8 +387,10 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
     async () =>
       guarded(() => {
         const appts = listMyAppointments(store, ctx.nowMs, ctx.customerId);
+        // No single business to key a locale off of; use the first appointment's business (see PROGRESS_DEV.md).
+        const overallLocale: Locale = appts.length > 0 ? store.getBusiness(appts[0].businessId)?.locale ?? "en" : "en";
         if (appts.length === 0) {
-          return ok("You don't have any upcoming appointments.", { appointments: [] });
+          return ok(sayNoAppointments(overallLocale), { appointments: [] });
         }
         const seriesCounts = new Map<string, number>();
         for (const a of appts) {
@@ -383,15 +399,15 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         const seenSeries = new Set<string>();
         const rows = appts.map((a) => {
           const business = store.getBusiness(a.businessId)!;
+          const locale: Locale = business.locale ?? "en";
           const service = business.services.find((s) => s.id === a.serviceId)!;
           const staff = business.staff.find((s) => s.id === a.staffId)!;
           const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
           const isOffer = a.holdKind === "waitlist_offer";
-          const when = relativeDayLabel(DateTime.fromISO(a.start, { setZone: true }), nowBiz);
+          const when = relativeDayLabel(DateTime.fromISO(a.start, { setZone: true }), nowBiz, locale);
           const seriesCount = a.seriesId ? seriesCounts.get(a.seriesId)! : 1;
           const isFirstOfSeries = !a.seriesId || !seenSeries.has(a.seriesId);
           if (a.seriesId) seenSeries.add(a.seriesId);
-          const seriesSuffix = a.seriesId && seriesCount > 1 ? ` (plus ${seriesCount - 1} more in this series)` : "";
           return {
             id: a.id,
             code: a.code,
@@ -406,12 +422,12 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
             _speechLine: !isFirstOfSeries
               ? null
               : isOffer
-                ? `Good news: a spot opened up for ${service.name} at ${business.name} on ${when} with ${staff.name}; say confirm to grab it.`
-                : `${service.name} at ${business.name} with ${staff.name} on ${when}, code ${a.code}${seriesSuffix}`,
+                ? sayWaitlistOfferLine(service.name, business.name, when, staff.name, locale)
+                : sayAppointmentLine(service.name, business.name, staff.name, when, a.code, seriesCount > 1 ? seriesCount - 1 : 0, locale),
           };
         });
         const speechLines = rows.map((r) => r._speechLine).filter((l): l is string => l !== null);
-        const speech = `You have ${rows.length} appointment${rows.length === 1 ? "" : "s"}: ${speechLines.join(". ")}.`;
+        const speech = sayAppointmentSummary(rows.length, speechLines, overallLocale);
         return ok(speech, { appointments: rows.map(({ _speechLine, ...rest }) => rest) });
       }),
   );
@@ -447,11 +463,10 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
           staffHint: staff,
           scope,
         });
+        const locale: Locale = business.locale ?? "en";
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        let speech = `Done. Your appointment is now ${relativeDayLabel(DateTime.fromISO(appointment.start, { setZone: true }), nowBiz)} with ${newStaff.name}.`;
-        if (seriesShiftedCount && seriesShiftedCount > 1) {
-          speech += ` I moved the rest of the series too — ${seriesShiftedCount - 1} more occurrence${seriesShiftedCount - 1 === 1 ? "" : "s"}.`;
-        }
+        const when = relativeDayLabel(DateTime.fromISO(appointment.start, { setZone: true }), nowBiz, locale);
+        const speech = sayRescheduled(when, newStaff.name, seriesShiftedCount, locale);
         return ok(speech, { start: appointment.start, end: appointment.end, staff_name: newStaff.name, series_shifted_count: seriesShiftedCount });
       }),
   );
@@ -479,15 +494,11 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
         const idOrCode = appointment_id ?? code;
         if (!idOrCode) return fail("I need either the appointment id or the confirmation code to cancel it.");
         const { alreadyCancelled, lateFee, business, seriesCancelledCount } = cancelAppointment(store, ctx.nowMs, ctx.customerId, idOrCode, scope);
+        const locale: Locale = business.locale ?? "en";
         if (alreadyCancelled) {
-          return ok("That appointment is already cancelled.", { cancelled: true, late_fee_warning: false });
+          return ok(sayAlreadyCancelled(locale), { cancelled: true, late_fee_warning: false });
         }
-        let speech = lateFee
-          ? `Cancelled. Since that's within ${business.cancelNoticeHours} hours of the appointment, a late cancellation fee may apply.`
-          : "Cancelled. No fee since you gave enough notice.";
-        if (seriesCancelledCount && seriesCancelledCount > 1) {
-          speech += ` I also cancelled the other ${seriesCancelledCount - 1} upcoming occurrence${seriesCancelledCount - 1 === 1 ? "" : "s"} in the series.`;
-        }
+        const speech = sayCancelled(lateFee, business.cancelNoticeHours, seriesCancelledCount, locale);
         return ok(speech, { cancelled: true, late_fee_warning: lateFee, series_cancelled_count: seriesCancelledCount });
       }),
   );
@@ -512,14 +523,15 @@ export function registerTools(server: McpServer, ctx: RequestContext): void {
       guarded(() => {
         const business = requireBusiness(store, business_id);
         const service = requireService(business, service_id);
+        const locale: Locale = business.locale ?? "en";
         const nowBiz = DateTime.fromMillis(ctx.nowMs, { zone: business.timezone });
-        const window = parseSpokenWindow(when ?? "", nowBiz);
+        const window = parseSpokenWindow(when ?? "", nowBiz, 14, locale);
         const entry = joinWaitlist(store, ctx.nowMs, ctx.customerId, {
           businessId: business.id,
           serviceId: service.id,
           window,
         });
-        const speech = `You're on the waitlist for ${service.name} at ${business.name}, ${window.label}. I'll let you know if a spot opens up.`;
+        const speech = sayWaitlistJoined(service.name, business.name, window.label, locale);
         return ok(speech, { waitlist_id: entry.id });
       }),
   );

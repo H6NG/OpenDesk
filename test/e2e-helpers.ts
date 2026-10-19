@@ -142,6 +142,44 @@ export function buildOAuthModeFixture(): StoreData {
   return data;
 }
 
+/**
+ * Fixture for the Phase 15 Spanish-locale e2e test: one business with
+ * `locale: "es"`, open all week, so a customer can be found/booked/
+ * confirmed/cancelled entirely through Spanish spoken phrases.
+ */
+export function buildSpanishLocaleFixture(): StoreData {
+  const data = emptyStoreData();
+  data.businesses.push({
+    id: "shop-es",
+    name: "Peluquería Sol",
+    category: "barber",
+    keywords: ["corte", "pelo"],
+    address: "3 Test St",
+    city: "Los Angeles",
+    phone: "+1-310-555-0400",
+    timezone: "America/Los_Angeles",
+    hours: {
+      1: [["09:00", "17:00"]],
+      2: [["09:00", "17:00"]],
+      3: [["09:00", "17:00"]],
+      4: [["09:00", "17:00"]],
+      5: [["09:00", "17:00"]],
+      6: [["09:00", "17:00"]],
+      7: [],
+    },
+    services: [{ id: "corte", name: "Corte de Pelo", durationMin: 30, priceCents: 2500 }],
+    staff: [{ id: "maria", name: "Maria", title: "Estilista", serviceIds: ["corte"] }],
+    bufferMin: 0,
+    slotStepMin: 15,
+    leadTimeMin: 0,
+    cancelNoticeHours: 2,
+    policyNote: "Se requiere 2 horas de aviso para cancelar.",
+    createdVia: "seed",
+    locale: "es",
+  });
+  return data;
+}
+
 export const OAUTH_CLIENT_ID = "e2e-test-client";
 export const OAUTH_CLIENT_SECRET = "e2e-test-secret";
 export const OAUTH_REDIRECT_URI = "https://client.example/callback";

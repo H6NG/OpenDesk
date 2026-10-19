@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import {
   buildNoneModeFixture,
   buildOAuthModeFixture,
+  buildSpanishLocaleFixture,
   spawnTestServer,
   OAUTH_CLIENT_ID,
   OAUTH_CLIENT_SECRET,
@@ -552,5 +553,61 @@ describe("e2e: oauth mode", () => {
       });
       assert.equal(reuseResp.status, 400);
     });
+  });
+});
+
+describe("e2e: Spanish locale (Phase 15)", () => {
+  let server: TestServer;
+  let client: Client;
+
+  before(async () => {
+    server = await spawnTestServer({ port: 3913, fixture: buildSpanishLocaleFixture(), authMode: "none" });
+    client = await newClient(server.baseUrl);
+  });
+
+  after(async () => {
+    await client.close();
+    await server.stop();
+  });
+
+  it("finds, holds, confirms, lists, and cancels entirely in Spanish", async () => {
+    const found = await timedCallTool(client, "find_businesses", { query: "Peluquería Sol" });
+    assert.equal(found.isError, undefined);
+
+    const avail = await timedCallTool(client, "find_availability", {
+      business_id: "shop-es",
+      service_id: "corte",
+      when: "el martes por la mañana",
+    });
+    assert.equal(avail.isError, undefined);
+    const slots = avail.structuredContent!.slots as { start: string; staff_name: string }[];
+    assert.ok(slots.length > 0);
+    assert.match(avail.structuredContent!.speech as string, /martes/i);
+
+    const hold = await timedCallTool(client, "hold_appointment", {
+      business_id: "shop-es",
+      service_id: "corte",
+      start: slots[0].start,
+      staff: "Maria",
+    });
+    assert.equal(hold.isError, undefined);
+    assert.match(hold.structuredContent!.speech as string, /Estoy reservando/);
+
+    const confirm = await timedCallTool(client, "confirm_appointment", { hold_id: hold.structuredContent!.hold_id as string });
+    assert.equal(confirm.isError, undefined);
+    assert.match(confirm.structuredContent!.speech as string, /^Listo, tienes/);
+    const code = confirm.structuredContent!.code as string;
+
+    const list = await timedCallTool(client, "list_my_appointments", {});
+    assert.match(list.structuredContent!.speech as string, /Tienes \d+ cita/);
+
+    const cancel = await timedCallTool(client, "cancel_appointment", { code });
+    assert.equal(cancel.isError, undefined);
+    assert.match(cancel.structuredContent!.speech as string, /^Cancelado/);
+  });
+
+  it("reports a closed day in Spanish", async () => {
+    const avail = await timedCallTool(client, "find_availability", { business_id: "shop-es", service_id: "corte", date: "2026-10-18" }); // Sunday, closed
+    assert.match(avail.structuredContent!.speech as string, /cerrado/i);
   });
 });

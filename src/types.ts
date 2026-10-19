@@ -21,6 +21,8 @@ export interface Staff {
 /** Luxon weekday: 1 = Monday ... 7 = Sunday. Each shift is ["HH:MM","HH:MM"). */
 export type HoursByWeekday = Record<number, [string, string][]>;
 
+export type Locale = "en" | "es";
+
 export interface Business {
   id: string;
   name: string;
@@ -39,6 +41,8 @@ export interface Business {
   cancelNoticeHours: number;
   policyNote: string;
   createdVia?: "seed" | "bedrock-onboarding";
+  /** When "es", every tool's speech and spoken-time parsing for this business render in Spanish. Defaults to "en". */
+  locale?: Locale;
 }
 
 // ---------------------------------------------------------------------------

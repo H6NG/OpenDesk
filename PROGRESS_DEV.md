@@ -10,7 +10,15 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 - [x] Phase 12: Reminder notifications
 - [x] Phase 13: Recurring appointments
 - [x] Phase 14: Dashboard analytics
-- [ ] Phase 15: Spanish voice support (lower priority, last)
+- [x] Phase 15: Spanish voice support (lower priority, last)
+
+## Explicitly out of scope (per SPEC_DEV.md — not attempted)
+
+- Real payment/deposit collection.
+- Multi-location businesses.
+- A standalone customer-facing portal with its own auth.
+
+None of the five phases above touch any of these.
 
 ## Log
 
@@ -182,6 +190,47 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   FINAL_REPORT.md.
   `npm run build` clean; `npm test` 67/67 (64 prior + 2 unit + 1 e2e).
 
+- Phase 15: Spanish voice support. `src/types.ts` — new `Locale = "en" | "es"`
+  and `Business.locale?: Locale` (defaults to `"en"` everywhere via `??`,
+  so every existing business/test/seed keeps working untouched).
+  `src/spokenTime.ts` — rewrote `parseSpokenWindow`/`relativeDayLabel`/
+  `formatClock`/`speakDateTime` to take a `locale` parameter and dispatch
+  through a `RULES: Record<Locale, LocaleRules>` table: Spanish daypart
+  phrases ("por la mañana", "a la hora de comer", "después del trabajo",
+  ...), Spanish between/after/before regexes ("entre las 2 y las 4",
+  "después de las 3", "antes del mediodía"), Spanish weekend/week keywords
+  ("este fin de semana", "la próxima semana", ...), Spanish noon/midnight
+  normalization ("mediodía"/"medianoche"), and `chrono.es.parse` instead of
+  the English `chrono.parse`, exactly as SPEC_DEV.md suggested instead of
+  hand-rolling translation. Weekday/month names come from Luxon's built-in
+  `es` locale (`dt.setLocale("es").toFormat("cccc")`); "hoy"/"mañana" are
+  hand-written since Luxon has no relative-day helper. Spoken time renders
+  as "a las 5:30 de la tarde" (not a literal "AM"/"PM" translation, which
+  isn't how Spanish speakers say times).
+  `src/mcp/speech.ts` — `speakAvailability`/`speakHold`/`speakConfirmation`/
+  `speakSeriesSummary` all take a `locale` parameter with full Spanish
+  templates (e.g. "Estoy reservando..." / "¿Confirmo la reserva?" for a
+  hold, "Listo, tienes..." for a confirmation).
+  New `src/i18n.ts` — Spanish/English templates for every other tool's
+  success-path speech string: business-details summary, closed/fully-booked
+  messages, the list_my_appointments lines (including the series-grouping
+  suffix) and overall summary, reschedule/cancel confirmations (including
+  series notes), waitlist-joined message.
+  `src/mcp/tools.ts` — every tool now resolves `business.locale ?? "en"`
+  and threads it through `parseSpokenWindow`/`speech.ts`/`i18n.ts` calls.
+  New tests: 15 Spanish cases added to `test/spokenTime.test.ts` (12
+  `parseSpokenWindow` phrases, each a literal Spanish translation of an
+  existing English `spokenTime.test.ts` case, asserted to resolve to the
+  *exact same* `fromDay`/`toDay`/`band`/`exact` window as its English
+  counterpart; 3 `speakDateTime` cases for "mañana a las 9:00 de la
+  mañana" / "jueves a las 5:30 de la tarde" / "lunes, 2 de noviembre a las
+  10:00 de la mañana"). New e2e fixture `buildSpanishLocaleFixture()`
+  (`shop-es`, `locale: "es"`) plus a new none-mode e2e suite in
+  `test/e2e.test.ts`: a full find→hold→confirm→list→cancel flow driven
+  entirely by Spanish phrases over the real MCP protocol, asserting the
+  speech text at each step, plus a closed-day-in-Spanish case.
+  `npm run build` clean; `npm test` 84/84 (67 prior + 15 spokenTime + 2 e2e).
+
 ## Known issues / ambiguities
 
 - Manual bookings skip the `leadTimeMin` check that voice bookings enforce
@@ -226,8 +275,33 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
   those bookings or new bookings are made for a time at/before "now" (as
   the manual smoke test above did). This is expected, not a bug — there's
   no history to report yet.
+- Phase 15 scope cuts, both chosen because SPEC_DEV.md explicitly flagged
+  this phase as lowest priority / best-effort:
+  - `BookingError` messages (every tool's *failure*-path text — "I couldn't
+    find that business," "that slot just got taken," etc.) stay English
+    only. Localizing them would mean threading `locale` through every
+    booking.ts function and every error site, several of which fire before
+    a business is even resolved (so there's no locale to pick yet). The
+    success-path speech — the primary "spoken" experience SPEC_DEV.md is
+    actually about — is fully bilingual; only the error/edge-case text
+    isn't.
+  - `find_businesses` always speaks English: it searches across every
+    business in the directory before any single one is chosen, so there's
+    no one business's `locale` to key off of yet.
+  - `list_my_appointments`' overall framing sentence ("Tienes N citas: ...")
+    picks the locale of the customer's *first* upcoming appointment's
+    business; a customer with bookings at both an English and a Spanish
+    business would get one locale for the summary sentence even though
+    each individual appointment line is correctly localized to its own
+    business. No single correct answer exists here since the customer
+    has no locale of their own in this data model.
+  - `Business.locale` has no dashboard UI control (no onboarding-form
+    toggle); it's set programmatically (seed data, Bedrock onboarding
+    output, or a direct business edit) since SPEC_DEV.md didn't ask for a
+    UI, only for the field and the rendering behavior once set.
 
 ## Next step
 
-Phase 15 (lower priority, last): Spanish voice support (`locale` field on
-Business, Spanish spokenTime/speech, chrono.es).
+None — every phase in SPEC_DEV.md (11-15) is complete, `npm test` passes in
+full (84/84). See FINAL_REPORT_DEV.md for the full test output and manual
+how-to-exercise notes for each feature, and DONE_DEV.
