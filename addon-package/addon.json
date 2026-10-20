@@ -18,13 +18,13 @@
     "REPLACE-ME-carousel-2.png",
     "REPLACE-ME-carousel-3.png"
   ],
-  "privacyPolicyUrl": "REPLACE-ME-https://example.com/privacy",
-  "termsOfUseUrl": "REPLACE-ME-https://example.com/terms",
+  "privacyPolicyUrl": "https://respective-socket-cases-shift.trycloudflare.com/privacy.html",
+  "termsOfUseUrl": "https://respective-socket-cases-shift.trycloudflare.com/terms.html",
   "integrations": [
     {
       "type": "MCP",
       "endpoint": {
-        "url": "REPLACE-ME-https://your-deployment.example.com/mcp"
+        "url": "https://respective-socket-cases-shift.trycloudflare.com/mcp"
       }
     }
   ]

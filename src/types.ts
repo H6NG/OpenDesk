@@ -70,6 +70,34 @@ export interface Customer {
   smsConsentUpdatedAt?: string | null;
 }
 
+// ---------------------------------------------------------------------------
+// Business owner accounts (DynamoDB-backed, not part of StoreData — see
+// src/owners.ts. Optional: only active when DYNAMODB_OWNERS_TABLE/
+// DYNAMODB_SESSIONS_TABLE are configured; the dashboard works unauthenticated
+// otherwise, same as before this feature existed.)
+// ---------------------------------------------------------------------------
+
+export interface Owner {
+  id: string;
+  email: string;
+  /** scrypt, "saltHex:hashHex" */
+  passwordHash: string;
+  /** Each owner account is scoped to exactly one business — no cross-business visibility. */
+  businessId: string;
+  createdAt: string;
+}
+
+export interface OwnerSession {
+  /** sha256 of the opaque session token stored in the owner's cookie; the token itself is never persisted. */
+  tokenHash: string;
+  ownerId: string;
+  businessId: string;
+  createdAt: string;
+  expiresAt: string;
+  /** Epoch seconds — DynamoDB's native TTL attribute, so expired sessions clean themselves up. */
+  ttl: number;
+}
+
 export type AppointmentStatus = "held" | "confirmed" | "cancelled" | "expired";
 export type HoldKind = "customer" | "waitlist_offer";
 export type AppointmentSource = "alexa" | "phone" | "walk-in";

@@ -15,6 +15,8 @@ export interface Config {
   twilioAccountSid: string;
   twilioAuthToken: string;
   twilioFromNumber: string;
+  dynamoOwnersTable: string;
+  dynamoSessionsTable: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -37,5 +39,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     twilioAccountSid: env.TWILIO_ACCOUNT_SID ?? "",
     twilioAuthToken: env.TWILIO_AUTH_TOKEN ?? "",
     twilioFromNumber: env.TWILIO_FROM_NUMBER ?? "",
+    dynamoOwnersTable: env.DYNAMODB_OWNERS_TABLE ?? "",
+    dynamoSessionsTable: env.DYNAMODB_SESSIONS_TABLE ?? "",
   };
+}
+
+/** Owner-login (DynamoDB) is entirely optional: the dashboard works exactly as before (unauthenticated, or gated by the single-shared DASHBOARD_TOKEN) until both tables are configured. */
+export function ownerAuthConfigured(config: Config): boolean {
+  return Boolean(config.dynamoOwnersTable && config.dynamoSessionsTable);
 }

@@ -1,4 +1,4 @@
-# Final Report — dev branch stretch features (Phases 11-21)
+# Final Report — dev branch stretch features (Phases 11-22)
 
 This is the dev-branch continuation of "Front Desk," building on top of the
 frozen main-branch submission (Phases 0-10, documented in PROGRESS.md and
@@ -11,8 +11,11 @@ user-requested additions made after SPEC_DEV.md was finished: Phase 16
 stock-tracked item/order catalog for businesses that sell goods, not just
 appointment time), Phase 18 (group bookings), Phase 19 (staff time-off
 blocks), Phase 20 (order-ready notifications plus real, pluggable SMS
-delivery), and Phase 21 (SMS consent/opt-out tracking, so Phase 20's real
-delivery path can't text anyone without their explicit opt-in).
+delivery), Phase 21 (SMS consent/opt-out tracking, so Phase 20's real
+delivery path can't text anyone without their explicit opt-in), and Phase
+22 (real per-owner dashboard login, DynamoDB-backed — one owner, one
+business, no cross-business visibility, replacing the single
+shared-secret `DASHBOARD_TOKEN` as the real auth story).
 Deposits/prepayment for no-show-prone bookings was proposed alongside
 18-20 but explicitly deferred — it needs a real PCI/compliance conversation
 with the project owner, same reasoning as the other out-of-scope items
@@ -22,7 +25,7 @@ out of scope" from SPEC_DEV.md's own out-of-scope list (real payments,
 multi-location businesses, a standalone customer portal) — none of these
 phases touched any of those.
 
-## Full `npm test` output (144/144 passing)
+## Full `npm test` output (155/155 passing)
 
 ```
 > front-desk@0.1.0 test
@@ -243,13 +246,41 @@ ok 15 - group bookings: hold + confirm
     ok 1 - createManualAppointment with party books every attendee as confirmed directly, each with a distinct staff member
     1..1
 ok 16 - group bookings: manual booking
+# Subtest: signUpOwner / loginOwner / getSessionOwner / logoutOwner
+    # Subtest: signs up, logs in, resolves the session, and logs out
+    ok 1 - signs up, logs in, resolves the session, and logs out
+    # Subtest: rejects a duplicate email
+    ok 2 - rejects a duplicate email
+    # Subtest: rejects a password under 8 characters
+    ok 3 - rejects a password under 8 characters
+    # Subtest: rejects the wrong password
+    ok 4 - rejects the wrong password
+    # Subtest: rejects login for an unknown email
+    ok 5 - rejects login for an unknown email
+    # Subtest: getSessionOwner returns null for a missing or garbage token
+    ok 6 - getSessionOwner returns null for a missing or garbage token
+    1..6
+ok 17 - signUpOwner / loginOwner / getSessionOwner / logoutOwner
+# Subtest: dashboard routes with owner-auth enabled (in-process, stub Dynamo client)
+    # Subtest: GET /api/me reports ownerAuthEnabled and unauthenticated before login
+    ok 1 - GET /api/me reports ownerAuthEnabled and unauthenticated before login
+    # Subtest: signup sets a session cookie that GET /api/state honors, scoped to that owner's business only
+    ok 2 - signup sets a session cookie that GET /api/state honors, scoped to that owner's business only
+    # Subtest: rejects mutating a different business's data even with a valid session for another business
+    ok 3 - rejects mutating a different business's data even with a valid session for another business
+    # Subtest: rejects /api/state with no cookie at all
+    ok 4 - rejects /api/state with no cookie at all
+    # Subtest: logout clears the session so the cookie no longer works
+    ok 5 - logout clears the session so the cookie no longer works
+    1..5
+ok 18 - dashboard routes with owner-auth enabled (in-process, stub Dynamo client)
 # Subtest: recurring appointments: hold + confirm
     # Subtest: books a 4-occurrence weekly series atomically, every Monday
     ok 1 - books a 4-occurrence weekly series atomically, every Monday
     # Subtest: rejects the whole series if any occurrence conflicts, booking none of it
     ok 2 - rejects the whole series if any occurrence conflicts, booking none of it
     1..2
-ok 17 - recurring appointments: hold + confirm
+ok 19 - recurring appointments: hold + confirm
 # Subtest: recurring appointments: cancel / reschedule scope
     # Subtest: cancel scope:'series' cancels the target and future occurrences but leaves past ones alone
     ok 1 - cancel scope:'series' cancels the target and future occurrences but leaves past ones alone
@@ -258,12 +289,12 @@ ok 17 - recurring appointments: hold + confirm
     # Subtest: reschedule scope:'this' (default) leaves siblings untouched
     ok 3 - reschedule scope:'this' (default) leaves siblings untouched
     1..3
-ok 18 - recurring appointments: cancel / reschedule scope
+ok 20 - recurring appointments: cancel / reschedule scope
 # Subtest: recurring appointments: manual booking
     # Subtest: createManualAppointment with recurrence books every occurrence as confirmed directly
     ok 1 - createManualAppointment with recurrence books every occurrence as confirmed directly
     1..1
-ok 19 - recurring appointments: manual booking
+ok 21 - recurring appointments: manual booking
 # Subtest: sweepReminders: hold expiry
     # Subtest: fires exactly one reminder once a hold has used 80% of its 5-minute TTL
     ok 1 - fires exactly one reminder once a hold has used 80% of its 5-minute TTL
@@ -272,19 +303,19 @@ ok 19 - recurring appointments: manual booking
     # Subtest: does not remind an already-confirmed hold
     ok 3 - does not remind an already-confirmed hold
     1..3
-ok 20 - sweepReminders: hold expiry
+ok 22 - sweepReminders: hold expiry
 # Subtest: sweepReminders: upcoming appointment
     # Subtest: fires once ~2 hours before start and not again on a second sweep
     ok 1 - fires once ~2 hours before start and not again on a second sweep
     # Subtest: logs a reminder_sent activity event
     ok 2 - logs a reminder_sent activity event
     1..2
-ok 21 - sweepReminders: upcoming appointment
+ok 23 - sweepReminders: upcoming appointment
 # Subtest: smsConfigured
     # Subtest: is true only when all three fields are set
     ok 1 - is true only when all three fields are set
     1..1
-ok 22 - smsConfigured
+ok 24 - smsConfigured
 # Subtest: sendSms
     # Subtest: throws a clear error when not configured, without touching the client
     ok 1 - throws a clear error when not configured, without touching the client
@@ -293,7 +324,7 @@ ok 22 - smsConfigured
     # Subtest: propagates a client failure
     ok 3 - propagates a client failure
     1..3
-ok 23 - sendSms
+ok 25 - sendSms
 # Subtest: SmsNotificationSink
     # Subtest: sends via the configured client when the customer has a phone on file and has consented
     ok 1 - sends via the configured client when the customer has a phone on file and has consented
@@ -304,7 +335,7 @@ ok 23 - sendSms
     # Subtest: logs rather than throwing when the send fails
     ok 4 - logs rather than throwing when the send fails
     1..4
-ok 24 - SmsNotificationSink
+ok 26 - SmsNotificationSink
 # Subtest: Store.setSmsConsent
     # Subtest: records opt-in with a timestamp, defaulting to no consent beforehand
     ok 1 - records opt-in with a timestamp, defaulting to no consent beforehand
@@ -313,7 +344,7 @@ ok 24 - SmsNotificationSink
     # Subtest: returns undefined for an unknown customer
     ok 3 - returns undefined for an unknown customer
     1..3
-ok 25 - Store.setSmsConsent
+ok 27 - Store.setSmsConsent
 # Subtest: parseSpokenWindow
     # Subtest: "thursday after work" -> 10-22, band [1020,1260]
     ok 1 - "thursday after work" -> 10-22, band [1020,1260]
@@ -340,7 +371,7 @@ ok 25 - Store.setSmsConsent
     # Subtest: "8am" -> rolls to 10-19
     ok 12 - "8am" -> rolls to 10-19
     1..12
-ok 26 - parseSpokenWindow
+ok 28 - parseSpokenWindow
 # Subtest: parseSpokenWindow: Spanish equivalents resolve to the same windows
     # Subtest: "el jueves después del trabajo" -> 10-22, band [1020,1260]
     ok 1 - "el jueves después del trabajo" -> 10-22, band [1020,1260]
@@ -367,7 +398,7 @@ ok 26 - parseSpokenWindow
     # Subtest: "8am" -> rolls to 10-19 (digits parse the same in both locales)
     ok 12 - "8am" -> rolls to 10-19 (digits parse the same in both locales)
     1..12
-ok 27 - parseSpokenWindow: Spanish equivalents resolve to the same windows
+ok 29 - parseSpokenWindow: Spanish equivalents resolve to the same windows
 # Subtest: parseSpokenWindow: French equivalents resolve to the same windows
     # Subtest: "jeudi après le travail" -> 10-22, band [1020,1260]
     ok 1 - "jeudi après le travail" -> 10-22, band [1020,1260]
@@ -394,7 +425,7 @@ ok 27 - parseSpokenWindow: Spanish equivalents resolve to the same windows
     # Subtest: "8am" -> rolls to 10-19 (digits parse the same in every locale)
     ok 12 - "8am" -> rolls to 10-19 (digits parse the same in every locale)
     1..12
-ok 28 - parseSpokenWindow: French equivalents resolve to the same windows
+ok 30 - parseSpokenWindow: French equivalents resolve to the same windows
 # Subtest: speakDateTime
     # Subtest: formats tomorrow
     ok 1 - formats tomorrow
@@ -415,7 +446,7 @@ ok 28 - parseSpokenWindow: French equivalents resolve to the same windows
     # Subtest: formats a date far enough out to need the full form in French
     ok 9 - formats a date far enough out to need the full form in French
     1..9
-ok 29 - speakDateTime
+ok 31 - speakDateTime
 # Subtest: addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
     # Subtest: adds a block, lists only future/ongoing ones, and removes it
     ok 1 - adds a block, lists only future/ongoing ones, and removes it
@@ -426,23 +457,23 @@ ok 29 - speakDateTime
     # Subtest: removing an unknown id throws
     ok 4 - removing an unknown id throws
     1..4
-ok 30 - addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
+ok 32 - addStaffTimeOff / removeStaffTimeOff / listStaffTimeOff
 # Subtest: staff time-off integrated into availability
     # Subtest: excludes a blocked staff member from findAvailability during their time off
     ok 1 - excludes a blocked staff member from findAvailability during their time off
     # Subtest: isSlotFree returns false during a blocked staff member's time off
     ok 2 - isSlotFree returns false during a blocked staff member's time off
     1..2
-ok 31 - staff time-off integrated into availability
-1..31
-# tests 144
-# suites 39
-# pass 144
+ok 33 - staff time-off integrated into availability
+1..33
+# tests 155
+# suites 41
+# pass 155
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 7375.839083
+# duration_ms 7939.432375
 ```
 
 `npm run build` (`tsc -p tsconfig.json`) also compiles clean with zero errors.
@@ -509,6 +540,14 @@ ok 31 - staff time-off integrated into availability
   — a phone number on file is never enough on its own. Closes a real
   compliance gap Phase 20 opened: once real SMS delivery exists, texting
   without consent is a TCPA risk, not just a demo shortcut.
+- **Phase 22 — Real per-owner dashboard login** (user-requested, after
+  SPEC_DEV.md): DynamoDB-backed owner accounts (`src/owners.ts`) replace
+  the single shared `DASHBOARD_TOKEN` as the dashboard's real auth story —
+  one owner, one business, no cross-business visibility, every mutating
+  route checks ownership and 403s otherwise. Entirely additive: with no
+  `DYNAMODB_*` env vars set (the default), the dashboard behaves exactly as
+  before this phase, zero risk to any pre-existing test or the already-live
+  demo server.
 
 See PROGRESS_DEV.md's Log section for the full design rationale, every
 ambiguity encountered, and exactly how each was resolved.
@@ -732,6 +771,32 @@ value and speech. `test/sms.test.ts` covers `Store.setSmsConsent` and the
 `SmsNotificationSink` consent gate directly; the "Phase 21: SMS consent"
 e2e suite drives the actual tool round trip.
 
+### Phase 22 — Real per-owner dashboard login
+
+Off by default — the dashboard behaves exactly as in every earlier phase
+until both `DYNAMODB_OWNERS_TABLE` and `DYNAMODB_SESSIONS_TABLE` are set.
+To turn it on:
+
+```
+npm run setup:dynamodb   # one-time, with your own AWS credentials; creates both tables
+```
+
+Then set the two table names (and `AWS_REGION`) in `.env` and restart the
+server. Visit `/` — you'll be redirected to `/login`. Sign up with an
+email, password, and an existing business (picked from a dropdown backed
+by the new unauthenticated `GET /api/public/businesses`), and you're
+dropped straight into that business's dashboard — no business-picker
+dropdown anymore, just that one business and a working **Log out** button.
+Try hitting `/api/state?business=<a-different-business-id>` with your
+session cookie: you still only ever get your own business back, confirming
+the server ignores the query param entirely once a session is active.
+`test/owners.test.ts` covers this without needing real AWS credentials: 6
+unit tests against `src/owners.ts` directly, plus 5 in-process Express
+integration tests driving the real HTTP routes (signup → cookie → scoped
+`/api/state`, a cross-business mutation attempt correctly 403ing, no
+cookie correctly 401ing, logout actually invalidating the session) against
+an injected stub DynamoDB client.
+
 ## Known sandbox limitations (not bugs)
 
 - No headless browser (Chromium/Puppeteer/Playwright) was available in this
@@ -751,6 +816,16 @@ e2e suite drives the actual tool round trip.
   (stdout/the activity feed) — the same "implement for real, inject a
   stub, document the gap" pattern the original submission used for
   Bedrock in Phase 6.
+- No real AWS account/credentials were used in this sandbox to actually
+  create or call the two DynamoDB tables (Phase 22) — this session built
+  the code, wrote `scripts/setup-dynamodb.ts` for the user to run
+  themselves, and verified the full signup/login/session/ownership logic
+  against an injected stub client (`test/owners.test.ts`, both at the
+  `src/owners.ts` unit level and via a real in-process Express HTTP
+  server). The one thing that couldn't be exercised here specifically is
+  the live DynamoDB network call itself — same category of gap as the
+  Twilio/Bedrock notes above, and the dashboard behaves identically with
+  or without it configured, so this never blocked anything else.
 
 See PROGRESS_DEV.md for the complete list of every ambiguity and scope
 decision made along the way.

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Front Desk — Privacy Policy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #eef2f0; --surface: #ffffff; --ink: #1b2a41; --ink-soft: #52637a;
+    --border: #d7ddd9; --accent: #0e7c86;
+  }
+  html[data-theme="dark"] {
+    --paper: #10161b; --surface: #1a2228; --ink: #e8edf0; --ink-soft: #9fb0bb;
+    --border: #2a3540; --accent: #39b7bf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #10161b; --surface: #1a2228; --ink: #e8edf0; --ink-soft: #9fb0bb; --border: #2a3540; --accent: #39b7bf; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: "Atkinson Hyperlegible", system-ui, sans-serif; line-height: 1.6;
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1 { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; font-size: 1.8rem; margin-bottom: 0.2rem; }
+  h2 { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 700; font-size: 1.1rem; margin-top: 2rem; color: var(--accent); }
+  p, li { color: var(--ink); }
+  .muted { color: var(--ink-soft); font-size: 0.9rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem 1.75rem; margin-top: 1.5rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Front Desk — Privacy Policy</h1>
+  <p class="muted">Last updated: October 2026</p>
+
+  <p>Front Desk is a voice-booking service for small local businesses (barbers,
+  clinics, pet groomers, and similar). This page explains what information
+  Front Desk collects when you book, order, or manage an appointment through
+  it, and how that information is used.</p>
+
+  <div class="card">
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Name and phone number</strong> — collected when you book an
+        appointment, place an order, or link your account, so a business can
+        identify your booking and, if you've opted in, text you about it.</li>
+      <li><strong>Appointment and order details</strong> — the service,
+        business, staff member, time, and price of what you book or order.</li>
+      <li><strong>Voice request content</strong> — the text of what you ask
+        Alexa+ to do, as needed to fulfill that specific request (e.g. "book a
+        haircut tomorrow afternoon").</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>SMS / text notifications</h2>
+    <p>Front Desk never sends you a text message unless you've explicitly
+    opted in by telling it to (for example, "yes, text me reminders"). You can
+    opt out at any time by saying so — just as easily as opting in — and no
+    further texts will be sent. A phone number being on file is never treated
+    as consent on its own.</p>
+  </div>
+
+  <div class="card">
+    <h2>How information is used</h2>
+    <p>Information you provide is used only to operate the booking/ordering
+    flow you asked for: finding a business, checking availability, holding
+    and confirming a slot or order, sending a reminder or order-ready
+    notification (only with your consent), and letting the business owner see
+    their own bookings on their dashboard. Front Desk does not sell your
+    information, and does not use it for advertising.</p>
+  </div>
+
+  <div class="card">
+    <h2>Third parties</h2>
+    <p>Front Desk may use Amazon Bedrock on the business-owner side only (for
+    turning a plain-language business description into a structured catalog,
+    and for a daily owner briefing) — this never involves customer-submitted
+    booking data. If a business has configured real SMS delivery, a
+    notification you've opted into is sent through Twilio, a third-party
+    messaging provider, solely to deliver that message to your phone.</p>
+  </div>
+
+  <div class="card">
+    <h2>Questions</h2>
+    <p>This is a hackathon project. For questions about this policy, contact
+    the project maintainer listed in the add-on's developer information.</p>
+  </div>
+</main>
+</body>
+</html>

@@ -17,6 +17,7 @@ Never edits SPEC.md/PROGRESS.md/FINAL_REPORT.md/DONE — those stay frozen.
 - [x] Phase 19: staff time off (user-requested addition, after SPEC_DEV.md)
 - [x] Phase 20: order-ready notifications + real pluggable SMS delivery (user-requested addition, after SPEC_DEV.md)
 - [x] Phase 21: SMS consent/opt-out tracking (user-requested addition, after SPEC_DEV.md)
+- [x] Phase 22: real per-owner dashboard login, DynamoDB-backed (user-requested addition, after SPEC_DEV.md)
 
 ## Explicitly out of scope (per SPEC_DEV.md — not attempted)
 
@@ -616,14 +617,106 @@ something to default into autonomously.
   consent-gate test in an existing suite + 3 Store.setSmsConsent + 1 e2e,
   net +5).
 
+- Phase 22 (user-requested addition, after SPEC_DEV.md): real per-owner
+  dashboard login, closing the gap flagged earlier — the dashboard had no
+  auth beyond an optional single shared `DASHBOARD_TOKEN` that saw every
+  business, not just one owner's. User picked DynamoDB as the backing
+  store (over the existing JSON-file `Store`) specifically to keep booking
+  data on the fast synchronous path documented throughout this repo as a
+  core differentiator; owner accounts/sessions are low-volume,
+  latency-insensitive, and isolated to the dashboard, so an async DB call
+  there doesn't touch the 500ms voice-booking budget. Deliberately scoped
+  to **just** this feature, not a wholesale migration — every other entity
+  (appointments, orders, customers, products, staff time off) stays in the
+  JSON store untouched.
+  Biggest design decision: **make owner-auth entirely additive**. It only
+  activates once both `DYNAMODB_OWNERS_TABLE`/`DYNAMODB_SESSIONS_TABLE` env
+  vars are set (`ownerAuthConfigured()` in `src/config.ts`); with neither
+  set (the default, and what the already-running demo tunnel was using),
+  the dashboard behaves byte-for-byte as before — same optional
+  `DASHBOARD_TOKEN` gate, same open business-picker dropdown, zero risk to
+  the 139 e2e/dashboard tests that already called `/api/*` unauthenticated
+  with no session. Confirmed live against the actual running demo server
+  after shipping this (not just the test suite): `/api/me` still reports
+  `ownerAuthEnabled: false` and the dashboard/MCP endpoint behave
+  identically to before.
+  New `src/types.ts` — `Owner` (email/passwordHash/businessId) and
+  `OwnerSession` (tokenHash/businessId/expiresAt/`ttl` — DynamoDB's native
+  TTL attribute, so expired sessions clean themselves up with no sweep
+  needed), deliberately *not* added to `StoreData`/`Store` since they live
+  in DynamoDB, not the JSON file. New `src/owners.ts`, structured like
+  `bedrock.ts`/`sms.ts`: `setDynamoClient()` for test injection (never a
+  real AWS call without configured credentials); passwords hashed with
+  Node's built-in `scrypt` (salt + hash, Node's own documented recipe, no
+  new dependency) — a deliberately different, slower, salted hash than the
+  plain-SHA-256 pattern `oauth.ts` already uses for *tokens*, since tokens
+  are high-entropy random values (SHA-256 is fine) while passwords are
+  low-entropy human choices (need a slow KDF); session tokens reuse the
+  existing opaque-bearer-token pattern (`base64url(randomBytes(32))`,
+  SHA-256'd before being stored, matching `oauth.ts` exactly). `signUpOwner`/
+  `loginOwner`/`getSessionOwner`/`logoutOwner`, all async, all going through
+  the injectable client.
+  `src/dashboard.ts` — a manual cookie-header parser (one function, no
+  `cookie-parser` dependency added); `requireOwnerSessionApi` (401 JSON) and
+  `requireOwnerSessionPage` (302 redirect to `/login`) as the two auth-gate
+  flavors, since a `fetch()` call and a browser navigation need different
+  failure behavior; `resolveBusinessId()` — session-scoped when owner-auth
+  is on, the legacy `?business=` query param otherwise — applied to every
+  read route; `assertOwnsBusiness()` — applied to every *write* route
+  (staff-time-off add/remove, order status, product stock, manual
+  appointments), rejecting a mutation targeting a business other than the
+  session's own with 403. Two routes blocked outright when owner-auth is
+  on, as architecturally out of scope for a single-business session:
+  `POST /api/businesses` (publishing a brand-new business doesn't fit a
+  "one owner, one already-existing business" model) and
+  `POST /api/demo/reset` (wipes every business's data, not just the
+  caller's). New `GET /api/me` (always reachable, reports which mode the
+  server is in, for the frontend) and `GET /api/public/businesses`
+  (name+id only, intentionally unauthenticated — the same info the public
+  `find_businesses` MCP tool already exposes — to populate the signup
+  page's business picker).
+  New `public/login.html` (login + signup toggle, matching the dashboard's
+  palette/fonts exactly). `public/dashboard.html` — calls `GET /api/me` on
+  load; in owner-auth mode, hides the business-picker dropdown (no more
+  switching between businesses you don't own), shows the business name as
+  a static label plus a working logout button, and loads state with no
+  client-supplied business id at all, trusting the session end to end;
+  outside owner-auth mode, the dropdown/switcher behaves exactly as it did
+  before this phase.
+  New `scripts/setup-dynamodb.ts` — a one-time, safely-re-runnable table
+  creation script the user runs themselves with their own AWS credentials
+  (`npm run setup:dynamodb`); deliberately not something this session ran
+  against a real AWS account, consistent with the standing rule against
+  touching the user's live infrastructure without them directly in the
+  loop. Capacity is 5 RCU/5 WCU per table (10/10 total across both),
+  provisioned mode specifically so DynamoDB's always-free 25/25 allowance
+  covers it with real headroom — not on-demand, which bills from the first
+  request with no free allowance at all. TTL enabled on the sessions
+  table's `ttl` attribute as part of the same script.
+  New tests: `test/owners.test.ts` — 6 unit tests against `src/owners.ts`
+  directly (signup/login/session-resolve/logout round trip, duplicate
+  email, short password, wrong password, unknown email, garbage/missing
+  token) plus 5 in-process Express integration tests exercising the real
+  HTTP routes end to end (own `app.listen()` on an ephemeral port in the
+  same test process, *not* `spawnTestServer`'s child-process spawn —
+  `setDynamoClient()`'s stub injection only works within the same process,
+  so this is a different, necessary harness shape from every other e2e
+  test in this repo): `/api/me` before login, signup sets a cookie that
+  scopes `/api/state` to that owner's business even when a different
+  `?business=` is requested, a cross-business mutation attempt gets 403,
+  no cookie gets 401, and logout actually invalidates the session.
+  `npm run build` clean; `npm test` 155/155 (144 prior + 11 new, all
+  additive — zero changes to any pre-existing test).
+
 ## Next step
 
 None — every phase in SPEC_DEV.md (11-15) is complete, plus the
-user-requested Phases 16-21 (French voice support; closed-day alternatives
+user-requested Phases 16-22 (French voice support; closed-day alternatives
 fix + item catalog/orders; group bookings; staff time off; order-ready
 notifications + real pluggable SMS delivery; SMS consent/opt-out
-tracking). Deposits/prepayment for no-show-prone bookings was proposed and
-deferred again (needs a real PCI/compliance conversation, not an
-autonomous decision). `npm test` passes in full (144/144). See
-FINAL_REPORT_DEV.md for the full test output and manual how-to-exercise
+tracking; real per-owner DynamoDB-backed dashboard login). Deposits/
+prepayment for no-show-prone bookings was proposed and deferred again
+(needs a real PCI/compliance conversation, not an autonomous decision).
+`npm test` passes in full (155/155). See FINAL_REPORT_DEV.md for the full
+test output and manual how-to-exercise
 notes for each feature, and DONE_DEV.
