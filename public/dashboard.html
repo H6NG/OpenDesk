@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Front Desk</title>
+<title>OpenDesk</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,7 +43,8 @@
   html, body {
     margin: 0;
     width: 100%;
-    overflow-x: hidden;
+    height: 100%;
+    overflow: hidden;
     background: var(--paper);
     color: var(--ink);
     font-family: "Atkinson Hyperlegible", system-ui, sans-serif;
@@ -83,7 +84,7 @@
     background-position: right 0.7rem center;
     background-size: 0.8rem;
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 0.5rem 2.1rem 0.5rem 1rem;
     cursor: pointer;
     transition: border-color 0.15s, box-shadow 0.15s;
@@ -95,7 +96,7 @@
     box-shadow: 0 0 0 3px var(--voice-soft);
   }
 
-  .app-shell { display: flex; min-height: 100vh; }
+  .app-shell { display: flex; height: 100vh; }
 
   .sidenav {
     flex: 0 0 216px;
@@ -105,6 +106,7 @@
     display: flex;
     flex-direction: column;
     padding: 1.1rem 0.8rem;
+    overflow-y: auto;
   }
   .sidenav h1 { font-size: 1.2rem; margin-bottom: 0.9rem; padding: 0 0.3rem; }
   .sidenav-picker { margin-bottom: 1rem; }
@@ -165,7 +167,7 @@
   .day-tab {
     flex: 0 0 auto;
     border: 1px solid var(--border);
-    border-radius: 999px;
+    border-radius: var(--radius);
     padding: 0.4rem 0.85rem;
     background: var(--paper);
     font-size: 0.85rem;
@@ -217,14 +219,16 @@
   .stat-tile .num { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.7rem; font-weight: 700; color: var(--ink); }
   .chart-block { margin-bottom: 0.9rem; }
   .chart-block h3 { font-size: 0.78rem; font-weight: 700; margin: 0 0 0.3rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.02em; }
-  .chart-svg { display: block; width: 100%; }
+  .chart-svg { display: block; width: 100%; height: auto; }
   .chart-bar { transition: opacity 0.1s; }
-  .chart-bar:hover { opacity: 0.75; }
-  .chart-axis-label { font-size: 7px; fill: var(--ink-soft); font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+  .chart-bar:hover { opacity: 0.8; }
+  .chart-axis-label { font-size: 9.5px; fill: var(--ink-soft); font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+  .chart-grid { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+  .chart-empty { text-align: center; padding: 2.2rem 0; font-size: 0.82rem; }
   .source-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.78rem; }
   .source-row .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
-  .source-row .bar-track { flex: 1 1 auto; height: 10px; border-radius: 4px; background: var(--paper); overflow: hidden; }
-  .source-row .bar-fill { height: 100%; border-radius: 4px; }
+  .source-row .bar-track { flex: 1 1 auto; height: 8px; border-radius: 2px; background: var(--paper); overflow: hidden; }
+  .source-row .bar-fill { height: 100%; border-radius: 2px; }
   .source-row .count { flex: 0 0 auto; color: var(--ink-soft); min-width: 1.4em; text-align: right; }
 
   .add-appt h2, .timeoff h2 { display: flex; align-items: center; justify-content: space-between; font-size: 1rem; }
@@ -249,18 +253,24 @@
   .order-row { font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
   .order-row:last-child { border-bottom: none; }
 
+  .staff-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+  .staff-row:last-child { border-bottom: none; }
+  .staff-row .sname { flex: 1 1 auto; }
+  .staff-row .sservices { color: var(--ink-soft); font-size: 0.78rem; }
+  .service-checks { display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem; margin-top: 0.6rem; font-size: 0.85rem; }
+  .service-checks label { display: flex; align-items: center; gap: 0.35rem; font-weight: 400; }
+
   .onboard textarea { width: 100%; min-height: 90px; resize: vertical; }
   .onboard .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
   table.preview { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.6rem; }
   table.preview th, table.preview td { text-align: left; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--border); }
 
-  footer { text-align: center; color: var(--ink-soft); font-size: 0.78rem; padding: 1rem; }
 </style>
 </head>
 <body>
   <div class="app-shell">
     <nav class="sidenav">
-      <h1>Front Desk</h1>
+      <h1>OpenDesk</h1>
       <div class="sidenav-picker">
         <select id="business-picker"></select>
         <span id="owner-business-label" style="display:none"></span>
@@ -272,6 +282,7 @@
         <button class="nav-item" data-section="waitlist">Waitlist <span class="nav-badge" id="nav-badge-waitlist">0</span></button>
         <button class="nav-item" data-section="products">Products</button>
         <button class="nav-item" data-section="orders">Orders <span class="nav-badge" id="nav-badge-orders">0</span></button>
+        <button class="nav-item" data-section="staff">Staff</button>
         <button class="nav-item" data-section="timeoff">Staff time off</button>
         <button class="nav-item" data-section="activity">Activity</button>
         <button class="nav-item" data-section="onboard">Onboard</button>
@@ -354,8 +365,20 @@
         </section>
 
         <section class="panel" data-panel="products" hidden>
-          <div class="card">
-            <h2>Products</h2>
+          <div class="card add-appt">
+            <h2>Products <button id="add-product-toggle">+ Add</button></h2>
+            <form id="add-product-form" style="display:none">
+              <div class="add-appt-grid">
+                <input type="text" id="add-product-name" placeholder="Item name, e.g. Beard Oil" required>
+                <input type="text" id="add-product-description" placeholder="Description (optional)">
+                <input type="number" id="add-product-price" min="0" step="1" placeholder="Price in cents, e.g. 1500" required>
+                <input type="number" id="add-product-stock" min="0" step="1" placeholder="Starting stock qty" required>
+              </div>
+              <div class="actions">
+                <button type="submit" class="primary">Add item</button>
+                <span class="muted" id="add-product-error"></span>
+              </div>
+            </form>
             <div id="products-list"><p class="muted">This business doesn't sell stock-tracked items.</p></div>
           </div>
         </section>
@@ -364,6 +387,24 @@
           <div class="card">
             <h2>Orders</h2>
             <div id="orders-list"><p class="muted">No active orders.</p></div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="staff" hidden>
+          <div class="card add-appt">
+            <h2>Staff <button id="add-staff-toggle">+ Add</button></h2>
+            <form id="add-staff-form" style="display:none">
+              <div class="add-appt-grid">
+                <input type="text" id="add-staff-name" placeholder="Name" required>
+                <input type="text" id="add-staff-title" placeholder="Title, e.g. Barber" required>
+              </div>
+              <div id="add-staff-services" class="service-checks"></div>
+              <div class="actions">
+                <button type="submit" class="primary">Add staff member</button>
+                <span class="muted" id="add-staff-error"></span>
+              </div>
+            </form>
+            <div id="staff-list"><p class="muted">No staff yet.</p></div>
           </div>
         </section>
 
@@ -411,8 +452,6 @@
       </main>
     </div>
   </div>
-
-  <footer>Front Desk, a voice booking front desk for small local businesses.</footer>
 
 <script>
 (function () {
@@ -463,6 +502,7 @@
   const waitlistEl = document.getElementById("waitlist-list");
   const productsEl = document.getElementById("products-list");
   const ordersEl = document.getElementById("orders-list");
+  const staffEl = document.getElementById("staff-list");
   const timeoffEl = document.getElementById("timeoff-list");
   const activityEl = document.getElementById("activity-feed");
   const briefingTextEl = document.getElementById("briefing-text");
@@ -545,6 +585,7 @@
     renderWaitlist();
     renderProducts();
     renderOrders();
+    renderStaff();
     renderTimeOffOptions();
     renderTimeOff();
     renderAddApptOptions();
@@ -596,6 +637,27 @@
   function formatCents(cents) {
     const dollars = cents / 100;
     return "$" + (dollars % 1 === 0 ? dollars : dollars.toFixed(2));
+  }
+
+  function renderStaff() {
+    const business = state.businessObj;
+    const staff = (business && business.staff) || [];
+    const services = (business && business.services) || [];
+
+    document.getElementById("add-staff-services").innerHTML = services
+      .map((s) => `<label><input type="checkbox" value="${s.id}"> ${s.name}</label>`)
+      .join("");
+
+    if (staff.length === 0) {
+      staffEl.innerHTML = '<p class="muted">No staff yet.</p>';
+      return;
+    }
+    staffEl.innerHTML = staff
+      .map((s) => {
+        const serviceNames = s.serviceIds.map((id) => (services.find((x) => x.id === id) || { name: id }).name).join(", ");
+        return `<div class="staff-row"><span class="sname">${s.name} &mdash; ${s.title}</span><span class="sservices">${serviceNames}</span></div>`;
+      })
+      .join("");
   }
 
   function renderOrders() {
@@ -669,22 +731,73 @@
     }
   }
 
+  /** Rounds up to a "clean" axis max: 1/2/5/10 x a power of ten, so gridline labels are readable numbers. */
+  function niceAxisMax(value) {
+    if (value <= 0) return 1;
+    const exp = Math.floor(Math.log10(value));
+    const base = Math.pow(10, exp);
+    const n = value / base;
+    const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+    return step * base;
+  }
+
+  /** A bar with rounded top corners and a square baseline edge — never rounded all the way around, which reads as a toy/badge shape rather than a data mark. */
+  function roundedTopBarPath(x, y, w, h, r) {
+    if (h <= 0 || w <= 0) return "";
+    const radius = Math.max(0, Math.min(r, w / 2, h));
+    if (radius === 0) return `M${x},${y + h} L${x},${y} L${x + w},${y} L${x + w},${y + h} Z`;
+    return (
+      `M${x},${y + h} ` +
+      `L${x},${y + radius} ` +
+      `Q${x},${y} ${x + radius},${y} ` +
+      `L${x + w - radius},${y} ` +
+      `Q${x + w},${y} ${x + w},${y + radius} ` +
+      `L${x + w},${y + h} Z`
+    );
+  }
+
   function barChartSvg(bars, opts) {
-    const w = 260, h = opts.height || 60;
-    const max = Math.max(1, ...bars.map((b) => b.value));
-    const barW = w / bars.length;
-    const rects = bars
-      .map((b, i) => {
-        const barH = (b.value / max) * (h - 12);
-        const x = i * barW;
-        const y = h - 12 - barH;
-        return `<rect class="chart-bar" x="${x + 0.5}" y="${y}" width="${Math.max(0, barW - 1)}" height="${Math.max(0, barH)}" fill="${opts.color}" rx="1.5"><title>${b.label}: ${b.value}</title></rect>`;
+    const total = bars.reduce((sum, b) => sum + b.value, 0);
+    if (total <= 0) {
+      return '<p class="muted chart-empty">No data for this period yet.</p>';
+    }
+
+    const w = 300, h = opts.height || 120;
+    const marginLeft = 32, marginTop = 8, marginBottom = 18;
+    const plotW = w - marginLeft;
+    const plotH = h - marginTop - marginBottom;
+    const rawMax = Math.max(0, ...bars.map((b) => b.value));
+    const axisMax = niceAxisMax(rawMax || 1);
+    const fmt = opts.formatTick || ((v) => String(Math.round(v)));
+    const slotW = plotW / bars.length;
+    const barW = Math.min(20, Math.max(2, slotW - 6));
+
+    const gridlines = [0, 0.5, 1]
+      .map((frac) => {
+        const val = axisMax * frac;
+        const y = marginTop + plotH - frac * plotH;
+        const gridLine = frac === 0 ? "" : `<line class="chart-grid" x1="${marginLeft}" x2="${w}" y1="${y}" y2="${y}" />`;
+        return `${gridLine}<text class="chart-axis-label" x="${marginLeft - 6}" y="${y + 3}" text-anchor="end">${fmt(val)}</text>`;
       })
       .join("");
-    const labels = bars
-      .map((b, i) => (b.showLabel ? `<text class="chart-axis-label" x="${i * barW + barW / 2}" y="${h - 1}" text-anchor="middle">${b.label}</text>` : ""))
+
+    const baseline = `<line class="chart-grid chart-baseline" x1="${marginLeft}" x2="${w}" y1="${marginTop + plotH}" y2="${marginTop + plotH}" />`;
+
+    const bars_ = bars
+      .map((b, i) => {
+        const barH = axisMax > 0 ? (b.value / axisMax) * plotH : 0;
+        const x = marginLeft + i * slotW + (slotW - barW) / 2;
+        const y = marginTop + plotH - barH;
+        const d = roundedTopBarPath(x, y, barW, Math.max(0, barH), 2.5);
+        return `<path class="chart-bar" d="${d}" fill="${opts.color}"><title>${b.label}: ${fmt(b.value)}</title></path>`;
+      })
       .join("");
-    return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${rects}${labels}</svg>`;
+
+    const xLabels = bars
+      .map((b, i) => (b.showLabel ? `<text class="chart-axis-label" x="${marginLeft + i * slotW + slotW / 2}" y="${h - 3}" text-anchor="middle">${b.label}</text>` : ""))
+      .join("");
+
+    return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${gridlines}${baseline}${bars_}${xLabels}</svg>`;
   }
 
   function renderAnalytics(data) {
@@ -698,13 +811,13 @@
       value: h.count,
       showLabel: h.hour % 6 === 0,
     }));
-    const hourChart = `<div class="chart-block"><h3>Bookings by hour of day</h3>${barChartSvg(hourBars, { color: "var(--voice)" })}</div>`;
+    const hourChart = `<div class="chart-block"><h3>Bookings by hour of day</h3>${barChartSvg(hourBars, { color: "var(--voice)", formatTick: (v) => String(Math.round(v)) })}</div>`;
 
     const dayBars = data.revenueByDay.map((d) => {
       const dt = new Date(d.date + "T00:00:00");
       return { label: dt.toLocaleDateString(undefined, { day: "numeric" }), value: d.revenueCents / 100, showLabel: true };
     });
-    const revenueChart = `<div class="chart-block"><h3>Revenue by day ($)</h3>${barChartSvg(dayBars, { color: "var(--hold)" })}</div>`;
+    const revenueChart = `<div class="chart-block"><h3>Revenue by day</h3>${barChartSvg(dayBars, { color: "var(--hold)", formatTick: (v) => "$" + Math.round(v) })}</div>`;
 
     const maxSourceCount = Math.max(1, ...data.sourceSplit.map((s) => s.count));
     const sourceRows = data.sourceSplit
@@ -1015,6 +1128,61 @@
         reason: document.getElementById("timeoff-reason").value || undefined,
       });
       document.getElementById("timeoff-form").reset();
+      await loadState(state.business);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.className = "error-text";
+      return;
+    }
+  });
+
+  document.getElementById("add-product-toggle").addEventListener("click", () => {
+    const form = document.getElementById("add-product-form");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("add-product-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("add-product-error");
+    errorEl.textContent = "";
+    errorEl.className = "muted";
+    try {
+      await postJSON("/api/products", {
+        businessId: state.business,
+        name: document.getElementById("add-product-name").value,
+        description: document.getElementById("add-product-description").value || undefined,
+        priceCents: Number(document.getElementById("add-product-price").value),
+        stockQty: Number(document.getElementById("add-product-stock").value),
+      });
+      document.getElementById("add-product-form").reset();
+      document.getElementById("add-product-form").style.display = "none";
+      await loadState(state.business);
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.className = "error-text";
+    }
+  });
+
+  document.getElementById("add-staff-toggle").addEventListener("click", () => {
+    const form = document.getElementById("add-staff-form");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  });
+
+  document.getElementById("add-staff-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("add-staff-error");
+    errorEl.textContent = "";
+    errorEl.className = "muted";
+    const serviceIds = Array.from(document.querySelectorAll("#add-staff-services input:checked")).map((el) => el.value);
+    try {
+      await postJSON("/api/staff", {
+        businessId: state.business,
+        name: document.getElementById("add-staff-name").value,
+        title: document.getElementById("add-staff-title").value,
+        serviceIds,
+      });
+      document.getElementById("add-staff-form").reset();
+      document.getElementById("add-staff-form").style.display = "none";
       await loadState(state.business);
     } catch (err) {
       errorEl.textContent = err.message;

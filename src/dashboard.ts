@@ -107,6 +107,17 @@ function assertOwnsBusiness(req: express.Request, res: express.Response, ownerAu
   return true;
 }
 
+function uniqueSlug(name: string, existingIds: Set<string>, fallback = "item"): string {
+  const base = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+  let slug = base;
+  let i = 2;
+  while (existingIds.has(slug)) {
+    slug = `${base}-${i}`;
+    i += 1;
+  }
+  return slug;
+}
+
 function isValidBusinessShape(b: unknown): b is Business {
   if (!b || typeof b !== "object") return false;
   const business = b as Record<string, unknown>;
@@ -296,6 +307,56 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       }
       res.status(500).json({ error: "Could not update the order." });
     }
+  });
+
+  app.post("/api/staff", ...api, (req, res) => {
+    const { businessId, name, title, serviceIds } = req.body ?? {};
+    if (typeof businessId !== "string" || typeof name !== "string" || !name.trim() || typeof title !== "string" || !Array.isArray(serviceIds) || serviceIds.length === 0) {
+      res.status(400).json({ error: "businessId, name, title, and at least one serviceId are required." });
+      return;
+    }
+    if (!assertOwnsBusiness(req, res, ownerAuthOn, businessId)) return;
+    const business = store.getBusiness(businessId);
+    if (!business) {
+      res.status(404).json({ error: "Unknown business." });
+      return;
+    }
+    const validServiceIds: string[] = serviceIds.filter((id: unknown) => typeof id === "string" && business.services.some((s) => s.id === id));
+    if (validServiceIds.length === 0) {
+      res.status(400).json({ error: "None of the given serviceIds exist on this business." });
+      return;
+    }
+    const existingIds = new Set(business.staff.map((s) => s.id));
+    const staff = { id: uniqueSlug(name, existingIds, "staff"), name: name.trim(), title: title.trim(), serviceIds: validServiceIds };
+    business.staff.push(staff);
+    store.touch();
+    res.status(201).json({ staff });
+  });
+
+  app.post("/api/products", ...api, (req, res) => {
+    const { businessId, name, description, priceCents, stockQty } = req.body ?? {};
+    if (typeof businessId !== "string" || typeof name !== "string" || !name.trim() || !Number.isInteger(priceCents) || priceCents < 0 || !Number.isInteger(stockQty) || stockQty < 0) {
+      res.status(400).json({ error: "businessId, name, a non-negative integer priceCents, and a non-negative integer stockQty are required." });
+      return;
+    }
+    if (!assertOwnsBusiness(req, res, ownerAuthOn, businessId)) return;
+    const business = store.getBusiness(businessId);
+    if (!business) {
+      res.status(404).json({ error: "Unknown business." });
+      return;
+    }
+    business.products ??= [];
+    const existingIds = new Set(business.products.map((p) => p.id));
+    const product = {
+      id: uniqueSlug(name, existingIds),
+      name: name.trim(),
+      description: typeof description === "string" ? description.trim() : "",
+      priceCents,
+      stockQty,
+    };
+    business.products.push(product);
+    store.touch();
+    res.status(201).json({ product });
   });
 
   app.patch("/api/products/:productId", ...api, (req, res) => {
