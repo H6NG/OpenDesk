@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --paper: #eef2f0;
@@ -214,22 +215,27 @@
   .activity-feed { max-height: 220px; overflow-y: auto; }
   .muted { color: var(--ink-soft); }
 
-  .analytics h2 { display: flex; align-items: baseline; justify-content: space-between; font-size: 1rem; }
-  .stat-tile { display: flex; align-items: baseline; gap: 0.4rem; margin: 0.3rem 0 0.7rem; }
-  .stat-tile .num { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.7rem; font-weight: 700; color: var(--ink); }
-  .chart-block { margin-bottom: 0.9rem; }
-  .chart-block h3 { font-size: 0.78rem; font-weight: 700; margin: 0 0 0.3rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.02em; }
-  .chart-svg { display: block; width: 100%; height: auto; }
-  .chart-bar { transition: opacity 0.1s; }
-  .chart-bar:hover { opacity: 0.8; }
-  .chart-axis-label { font-size: 9.5px; fill: var(--ink-soft); font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
-  .chart-grid { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+  .analytics-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; }
+  .analytics-head h2 { font-size: 1rem; margin: 0; }
+  .range-tabs { display: flex; gap: 0.3rem; }
+  .range-tabs button { font-size: 0.75rem; padding: 0.3rem 0.65rem; border-radius: var(--radius); }
+  .range-tabs button.active { background: var(--voice); color: #fff; border-color: var(--voice); }
+
+  .stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
+  .stat-tile { padding: 0.7rem 0.85rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--paper); }
+  .stat-tile .num { display: block; font-family: "Bricolage Grotesque", system-ui, sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--ink); line-height: 1.2; }
+  .stat-tile .label { display: block; font-size: 0.75rem; color: var(--ink-soft); margin-top: 0.15rem; }
+
+  .chart-block { margin-bottom: 1.3rem; }
+  .chart-block-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.3rem; }
+  .chart-block h3 { font-size: 0.78rem; font-weight: 700; margin: 0; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.02em; }
+  .chart-table-toggle { font-size: 0.72rem; background: none; border: none; padding: 0; color: var(--voice); text-decoration: underline; cursor: pointer; }
+  .chart-canvas-wrap { position: relative; height: 180px; }
   .chart-empty { text-align: center; padding: 2.2rem 0; font-size: 0.82rem; }
-  .source-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.78rem; }
-  .source-row .swatch { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 auto; }
-  .source-row .bar-track { flex: 1 1 auto; height: 8px; border-radius: 2px; background: var(--paper); overflow: hidden; }
-  .source-row .bar-fill { height: 100%; border-radius: 2px; }
-  .source-row .count { flex: 0 0 auto; color: var(--ink-soft); min-width: 1.4em; text-align: right; }
+  .chart-data-table { display: none; width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 0.4rem; }
+  .chart-data-table.shown { display: table; }
+  .chart-data-table th, .chart-data-table td { text-align: right; padding: 0.2rem 0.4rem; border-bottom: 1px solid var(--border); }
+  .chart-data-table th:first-child, .chart-data-table td:first-child { text-align: left; }
 
   .add-appt h2, .timeoff h2 { display: flex; align-items: center; justify-content: space-between; font-size: 1rem; }
   .add-appt h2 button, .timeoff h2 button { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
@@ -352,7 +358,14 @@
 
         <section class="panel" data-panel="analytics" hidden>
           <div class="card analytics">
-            <h2>Analytics <span class="muted" style="font-size:0.75rem">last 14 days</span></h2>
+            <div class="analytics-head">
+              <h2>Analytics</h2>
+              <div class="range-tabs" id="analytics-range" role="group" aria-label="Date range">
+                <button type="button" data-days="7">7D</button>
+                <button type="button" data-days="14" class="active">14D</button>
+                <button type="button" data-days="30">30D</button>
+              </div>
+            </div>
             <div id="analytics-body"><p class="muted">Loading...</p></div>
           </div>
         </section>
@@ -492,7 +505,7 @@
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
   }
 
-  const state = { businesses: [], business: null, days: [], selectedDay: 0, now: null, appointments: [], waitlist: [], orders: [], staffTimeOff: [], previewBusiness: null, ownerAuthMode: false };
+  const state = { businesses: [], business: null, days: [], selectedDay: 0, now: null, appointments: [], waitlist: [], orders: [], staffTimeOff: [], previewBusiness: null, ownerAuthMode: false, analyticsDays: 14 };
 
   const dayTabsEl = document.getElementById("day-tabs");
   const timelineEl = document.getElementById("timeline");
@@ -716,14 +729,26 @@
     });
   }
 
-  const ANALYTICS_DAYS = 14;
-  const CHART_COLORS = { alexa: "var(--voice)", phone: "var(--hold)", "walk-in": "var(--offer)" };
+  const CHART_COLOR_VARS = { alexa: "--voice", phone: "--hold", "walk-in": "--offer" };
   const SOURCE_LABELS = { alexa: "Voice (Alexa+)", phone: "Phone", "walk-in": "Walk-in" };
+
+  /** Canvas fillStyle can't resolve CSS custom properties, so chart colors are read as computed hex at render time — stays in sync with the light/dark theme toggle automatically. */
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  document.getElementById("analytics-range").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-days]");
+    if (!btn) return;
+    state.analyticsDays = Number(btn.dataset.days);
+    document.querySelectorAll("#analytics-range button").forEach((b) => b.classList.toggle("active", b === btn));
+    loadAnalytics(state.ownerAuthMode ? undefined : state.business);
+  });
 
   async function loadAnalytics(businessId) {
     const body = document.getElementById("analytics-body");
     try {
-      const qs = (businessId ? "business=" + encodeURIComponent(businessId) + "&" : "") + "days=" + ANALYTICS_DAYS;
+      const qs = (businessId ? "business=" + encodeURIComponent(businessId) + "&" : "") + "days=" + state.analyticsDays;
       const data = await getJSON("/api/analytics?" + qs);
       renderAnalytics(data);
     } catch (e) {
@@ -731,104 +756,144 @@
     }
   }
 
-  /** Rounds up to a "clean" axis max: 1/2/5/10 x a power of ten, so gridline labels are readable numbers. */
-  function niceAxisMax(value) {
-    if (value <= 0) return 1;
-    const exp = Math.floor(Math.log10(value));
-    const base = Math.pow(10, exp);
-    const n = value / base;
-    const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
-    return step * base;
+  let hourChartInstance = null;
+  let revenueChartInstance = null;
+  let channelChartInstance = null;
+
+  function baseChartOptions(formatTick) {
+    const ink = cssVar("--ink-soft");
+    const grid = cssVar("--border");
+    const surface = cssVar("--surface");
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 200 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: cssVar("--ink"),
+          titleColor: surface,
+          bodyColor: surface,
+          padding: 8,
+          cornerRadius: 6,
+          displayColors: false,
+          callbacks: { label: (c) => formatTick(c.parsed.x ?? c.parsed.y) },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, border: { color: grid }, ticks: { color: ink, font: { size: 10.5 }, maxRotation: 0, autoSkip: true } },
+        y: { beginAtZero: true, grid: { color: grid }, border: { display: false }, ticks: { color: ink, font: { size: 10.5 }, callback: formatTick } },
+      },
+    };
   }
 
-  /** A bar with rounded top corners and a square baseline edge — never rounded all the way around, which reads as a toy/badge shape rather than a data mark. */
-  function roundedTopBarPath(x, y, w, h, r) {
-    if (h <= 0 || w <= 0) return "";
-    const radius = Math.max(0, Math.min(r, w / 2, h));
-    if (radius === 0) return `M${x},${y + h} L${x},${y} L${x + w},${y} L${x + w},${y + h} Z`;
+  /** Vertical bar chart: rounded top corners only, square at the baseline — a real data mark, not a badge shape. */
+  function makeBarChart(canvasId, labels, values, color, formatTick) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ data: values, backgroundColor: color, hoverBackgroundColor: color, borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 }, borderSkipped: false, maxBarThickness: 22 }],
+      },
+      options: baseChartOptions(formatTick),
+    });
+  }
+
+  /** Horizontal bar chart for the channel split — one bar per category, each its own color, axis labels name every bar so identity is never color-alone. */
+  function makeChannelChart(canvasId, labels, values, colors) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+    const opts = baseChartOptions((v) => String(Math.round(v)));
+    opts.indexAxis = "y";
+    opts.scales = {
+      x: { beginAtZero: true, grid: { color: cssVar("--border") }, border: { display: false }, ticks: { color: cssVar("--ink-soft"), font: { size: 10.5 } } },
+      y: { grid: { display: false }, border: { color: cssVar("--border") }, ticks: { color: cssVar("--ink"), font: { size: 11 } } },
+    };
+    return new Chart(canvas, {
+      type: "bar",
+      data: { labels, datasets: [{ data: values, backgroundColor: colors, hoverBackgroundColor: colors, borderRadius: { topLeft: 0, topRight: 3, bottomLeft: 0, bottomRight: 3 }, borderSkipped: false, maxBarThickness: 18 }] },
+      options: opts,
+    });
+  }
+
+  function hourLabel(hour) {
+    return hour === 0 ? "12a" : hour < 12 ? hour + "a" : hour === 12 ? "12p" : hour - 12 + "p";
+  }
+
+  /** Data-table fallback for a chart — same values, reachable without hover, per the non-negotiable that a table view exists. */
+  function chartDataTable(id, headers, rows) {
+    const head = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
+    const body = rows.map((r) => `<tr>${r.map((v) => `<td>${v}</td>`).join("")}</tr>`).join("");
+    return `<table class="chart-data-table" id="${id}"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  }
+
+  function chartBlock(canvasId, tableId, title, hasData, tableHtml) {
+    const chartHtml = hasData ? `<div class="chart-canvas-wrap"><canvas id="${canvasId}"></canvas></div>` : '<p class="muted chart-empty">No data for this period yet.</p>';
     return (
-      `M${x},${y + h} ` +
-      `L${x},${y + radius} ` +
-      `Q${x},${y} ${x + radius},${y} ` +
-      `L${x + w - radius},${y} ` +
-      `Q${x + w},${y} ${x + w},${y + radius} ` +
-      `L${x + w},${y + h} Z`
+      `<div class="chart-block">` +
+      `<div class="chart-block-head"><h3>${title}</h3>${hasData ? `<button type="button" class="chart-table-toggle" data-target="${tableId}">View as table</button>` : ""}</div>` +
+      chartHtml +
+      (hasData ? tableHtml : "") +
+      `</div>`
     );
-  }
-
-  function barChartSvg(bars, opts) {
-    const total = bars.reduce((sum, b) => sum + b.value, 0);
-    if (total <= 0) {
-      return '<p class="muted chart-empty">No data for this period yet.</p>';
-    }
-
-    const w = 300, h = opts.height || 120;
-    const marginLeft = 32, marginTop = 8, marginBottom = 18;
-    const plotW = w - marginLeft;
-    const plotH = h - marginTop - marginBottom;
-    const rawMax = Math.max(0, ...bars.map((b) => b.value));
-    const axisMax = niceAxisMax(rawMax || 1);
-    const fmt = opts.formatTick || ((v) => String(Math.round(v)));
-    const slotW = plotW / bars.length;
-    const barW = Math.min(20, Math.max(2, slotW - 6));
-
-    const gridlines = [0, 0.5, 1]
-      .map((frac) => {
-        const val = axisMax * frac;
-        const y = marginTop + plotH - frac * plotH;
-        const gridLine = frac === 0 ? "" : `<line class="chart-grid" x1="${marginLeft}" x2="${w}" y1="${y}" y2="${y}" />`;
-        return `${gridLine}<text class="chart-axis-label" x="${marginLeft - 6}" y="${y + 3}" text-anchor="end">${fmt(val)}</text>`;
-      })
-      .join("");
-
-    const baseline = `<line class="chart-grid chart-baseline" x1="${marginLeft}" x2="${w}" y1="${marginTop + plotH}" y2="${marginTop + plotH}" />`;
-
-    const bars_ = bars
-      .map((b, i) => {
-        const barH = axisMax > 0 ? (b.value / axisMax) * plotH : 0;
-        const x = marginLeft + i * slotW + (slotW - barW) / 2;
-        const y = marginTop + plotH - barH;
-        const d = roundedTopBarPath(x, y, barW, Math.max(0, barH), 2.5);
-        return `<path class="chart-bar" d="${d}" fill="${opts.color}"><title>${b.label}: ${fmt(b.value)}</title></path>`;
-      })
-      .join("");
-
-    const xLabels = bars
-      .map((b, i) => (b.showLabel ? `<text class="chart-axis-label" x="${marginLeft + i * slotW + slotW / 2}" y="${h - 3}" text-anchor="middle">${b.label}</text>` : ""))
-      .join("");
-
-    return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${gridlines}${baseline}${bars_}${xLabels}</svg>`;
   }
 
   function renderAnalytics(data) {
     const body = document.getElementById("analytics-body");
 
+    const totalBookings = data.bookingsByHour.reduce((sum, h) => sum + h.count, 0);
+    const totalRevenueCents = data.revenueByDay.reduce((sum, d) => sum + d.revenueCents, 0);
     const noShowPct = Math.round(data.noShowRate * 100);
-    const statTile = `<div class="stat-tile"><span class="num">${data.noShowSampleSize > 0 ? noShowPct + "%" : "–"}</span><span class="muted">no-show rate proxy (late cancellations), ${data.noShowSampleSize} past appt${data.noShowSampleSize === 1 ? "" : "s"}</span></div>`;
+    const statTiles =
+      `<div class="stat-tiles">` +
+      `<div class="stat-tile"><span class="num">${totalBookings.toLocaleString()}</span><span class="label">Bookings, last ${data.days} days</span></div>` +
+      `<div class="stat-tile"><span class="num">$${Math.round(totalRevenueCents / 100).toLocaleString()}</span><span class="label">Revenue, confirmed</span></div>` +
+      `<div class="stat-tile"><span class="num">${data.noShowSampleSize > 0 ? noShowPct + "%" : "–"}</span><span class="label">No-show rate proxy, ${data.noShowSampleSize} past appt${data.noShowSampleSize === 1 ? "" : "s"}</span></div>` +
+      `</div>`;
 
-    const hourBars = data.bookingsByHour.map((h) => ({
-      label: h.hour % 6 === 0 ? (h.hour === 0 ? "12a" : h.hour < 12 ? h.hour + "a" : h.hour === 12 ? "12p" : h.hour - 12 + "p") : "",
-      value: h.count,
-      showLabel: h.hour % 6 === 0,
-    }));
-    const hourChart = `<div class="chart-block"><h3>Bookings by hour of day</h3>${barChartSvg(hourBars, { color: "var(--voice)", formatTick: (v) => String(Math.round(v)) })}</div>`;
+    const hourLabels = data.bookingsByHour.map((h) => hourLabel(h.hour));
+    const hourValues = data.bookingsByHour.map((h) => h.count);
+    const hourTable = chartDataTable("hour-table", ["Hour", "Bookings"], data.bookingsByHour.map((h) => [hourLabel(h.hour), h.count]));
+    const hourChart = chartBlock("hour-canvas", "hour-table", "Bookings by hour of day", totalBookings > 0, hourTable);
 
-    const dayBars = data.revenueByDay.map((d) => {
-      const dt = new Date(d.date + "T00:00:00");
-      return { label: dt.toLocaleDateString(undefined, { day: "numeric" }), value: d.revenueCents / 100, showLabel: true };
+    const dayLabelsShort = data.revenueByDay.map((d) => new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { day: "numeric" }));
+    const dayValues = data.revenueByDay.map((d) => d.revenueCents / 100);
+    const revenueTable = chartDataTable(
+      "revenue-table",
+      ["Date", "Revenue"],
+      data.revenueByDay.map((d) => [new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }), "$" + Math.round(d.revenueCents / 100)]),
+    );
+    const revenueChart = chartBlock("revenue-canvas", "revenue-table", "Revenue by day", totalRevenueCents > 0, revenueTable);
+
+    const totalSourceCount = data.sourceSplit.reduce((sum, s) => sum + s.count, 0);
+    const channelLabels = data.sourceSplit.map((s) => SOURCE_LABELS[s.source]);
+    const channelValues = data.sourceSplit.map((s) => s.count);
+    const channelColors = data.sourceSplit.map((s) => cssVar(CHART_COLOR_VARS[s.source]));
+    const channelTable = chartDataTable(
+      "channel-table",
+      ["Channel", "Bookings", "Share"],
+      data.sourceSplit.map((s) => [SOURCE_LABELS[s.source], s.count, totalSourceCount > 0 ? Math.round((s.count / totalSourceCount) * 100) + "%" : "–"]),
+    );
+    const channelChart = chartBlock("channel-canvas", "channel-table", "Bookings by channel", totalSourceCount > 0, channelTable);
+
+    body.innerHTML = statTiles + hourChart + revenueChart + channelChart;
+
+    if (hourChartInstance) hourChartInstance.destroy();
+    if (revenueChartInstance) revenueChartInstance.destroy();
+    if (channelChartInstance) channelChartInstance.destroy();
+    hourChartInstance = totalBookings > 0 ? makeBarChart("hour-canvas", hourLabels, hourValues, cssVar("--voice"), (v) => String(Math.round(v))) : null;
+    revenueChartInstance = totalRevenueCents > 0 ? makeBarChart("revenue-canvas", dayLabelsShort, dayValues, cssVar("--hold"), (v) => "$" + Math.round(v)) : null;
+    channelChartInstance = totalSourceCount > 0 ? makeChannelChart("channel-canvas", channelLabels, channelValues, channelColors) : null;
+
+    body.querySelectorAll(".chart-table-toggle").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const table = document.getElementById(btn.dataset.target);
+        const shown = table.classList.toggle("shown");
+        btn.textContent = shown ? "Hide table" : "View as table";
+      });
     });
-    const revenueChart = `<div class="chart-block"><h3>Revenue by day</h3>${barChartSvg(dayBars, { color: "var(--hold)", formatTick: (v) => "$" + Math.round(v) })}</div>`;
-
-    const maxSourceCount = Math.max(1, ...data.sourceSplit.map((s) => s.count));
-    const sourceRows = data.sourceSplit
-      .map(
-        (s) =>
-          `<div class="source-row"><span class="swatch" style="background:${CHART_COLORS[s.source]}"></span><span>${SOURCE_LABELS[s.source]}</span><span class="bar-track"><span class="bar-fill" style="width:${(s.count / maxSourceCount) * 100}%;background:${CHART_COLORS[s.source]}"></span></span><span class="count">${s.count}</span></div>`,
-      )
-      .join("");
-    const sourceChart = `<div class="chart-block"><h3>Bookings by channel</h3>${sourceRows}</div>`;
-
-    body.innerHTML = statTile + hourChart + revenueChart + sourceChart;
   }
 
   function renderAddApptOptions() {
@@ -1203,6 +1268,11 @@
     }
     if (me.ownerAuthEnabled) {
       state.ownerAuthMode = true;
+      state.ownerRole = me.role;
+      if (me.role === "employee") {
+        document.getElementById("add-product-toggle").style.display = "none";
+        document.getElementById("add-staff-toggle").style.display = "none";
+      }
       pickerEl.style.display = "none";
       ownerBusinessLabelEl.style.display = "inline";
       logoutBtnEl.style.display = "inline-block";

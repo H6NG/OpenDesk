@@ -2,12 +2,12 @@
 
 ## Devpost description
 
-**Front Desk** is an Alexa+ MCP server that gives small local businesses,
+**OpenDesk** is an Alexa+ MCP server that gives small local businesses,
 barbershops, physio and massage clinics, pet groomers, real voice booking,
 with no app for the customer and no app to build for the owner.
 
-A customer just asks: *"Alexa, ask Front Desk to book a haircut for tomorrow
-after work."* Front Desk finds the business, checks real availability against
+A customer just asks: *"Alexa, ask OpenDesk to book a haircut for tomorrow
+after work."* OpenDesk finds the business, checks real availability against
 staff schedules and buffer times, holds the slot, reads it back for
 confirmation, and books it, spelling the confirmation code aloud so it's easy
 to catch. It also handles rescheduling, cancellations with late-fee warnings,
@@ -36,7 +36,7 @@ what you'd tell a judge in 30 seconds that isn't in the pitch above.]
 
 ## AWS Builder mini challenge (Amazon Bedrock) answer
 
-Front Desk uses Amazon Bedrock's Converse API (`us.amazon.nova-lite-v1:0` by
+OpenDesk uses Amazon Bedrock's Converse API (`us.amazon.nova-lite-v1:0` by
 default) for two owner-facing features, deliberately kept out of the
 customer-facing voice path entirely (every MCP tool call must stay under
 500ms with zero network calls, so an LLM call has no place there):
@@ -89,13 +89,13 @@ Alexa+ console UX friction.]
 ## 2:45 demo video script
 
 **0:00-0:15, hook.** Cold open on a phone ringing at a barbershop, nobody
-picks up. Cut to: *"Alexa, ask Front Desk to book a haircut at Maple Street
+picks up. Cut to: *"Alexa, ask OpenDesk to book a haircut at Maple Street
 Barbers for tomorrow after work."* Alexa+ responds immediately.
 
 **0:15-0:55, the booking flow.** Screen recording of the conversation:
 finding the business, hearing services and prices, Alexa+ reading back a
 specific slot and price, the explicit "should I book it?", the confirmation
-with the spelled-out code. Voiceover: "Front Desk is a real MCP server. Every
+with the spelled-out code. Voiceover: "OpenDesk is a real MCP server. Every
 one of these calls is a tool call, under ten milliseconds, with the real
 appointment book behind it, not a script."
 
@@ -108,7 +108,7 @@ for holds that haven't confirmed yet, violet for waitlist offers."
 **1:30-2:00, cancellation and the waitlist.** A second, pre-recorded customer
 says *"Alexa, cancel my appointment."* Cut to the dashboard: the slot clears,
 and a violet waitlist-offer block appears instantly for a waiting customer.
-Voiceover: "Front Desk doesn't just free the slot, it offers it to the next
+Voiceover: "OpenDesk doesn't just free the slot, it offers it to the next
 person in line, automatically."
 
 **2:00-2:30, Bedrock onboarding.** Cut to the dashboard's onboarding panel.
@@ -117,8 +117,8 @@ catalog with Bedrock." A full services/staff/price table appears in seconds.
 Click "Publish to Alexa+." Voiceover: "That's Amazon Bedrock turning plain
 English into a bookable business, no spreadsheet, no form with forty fields."
 
-**2:30-2:45, close.** Back to the Front Desk logo and the one-line pitch:
-"Front Desk: voice booking for the businesses that never had an app budget."
+**2:30-2:45, close.** Back to the OpenDesk logo and the one-line pitch:
+"OpenDesk: voice booking for the businesses that never had an app budget."
 End on the GitHub repo URL.
 
 [YOU: swap in your actual device/voice footage, your actual repo URL, and

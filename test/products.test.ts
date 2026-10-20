@@ -23,6 +23,7 @@ const CONFIG: Config = {
   twilioFromNumber: "",
   dynamoOwnersTable: "", // owner-auth off — plain dashboard behavior
   dynamoSessionsTable: "",
+  dynamoBusinessesTable: "",
 };
 
 const BUSINESS_ID = "maple-street-barbers";

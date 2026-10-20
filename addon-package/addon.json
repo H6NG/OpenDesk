@@ -1,13 +1,13 @@
 {
-  "name": "Front Desk",
+  "name": "OpenDesk",
   "shortDescription": "Book, reschedule, and cancel appointments at local barbers, clinics, and groomers, all by voice.",
-  "description": "Front Desk connects small local businesses, like barbershops, physio and massage clinics, and pet groomers, to Alexa+ voice booking. Ask to find a business, hear its services and hours, find an open time, and book it, all in one conversation. Front Desk also handles rescheduling, cancellations, and waitlists, and lets business owners onboard their catalog in minutes with Amazon Bedrock.",
+  "description": "OpenDesk connects small local businesses, like barbershops, physio and massage clinics, and pet groomers, to Alexa+ voice booking. Ask to find a business, hear its services and hours, find an open time, and book it, all in one conversation. OpenDesk also handles rescheduling, cancellations, and waitlists, and lets business owners onboard their catalog in minutes with Amazon Bedrock.",
   "category": "SCHEDULE_AND_PLAN",
   "examplePhrases": [
-    "Alexa, ask Front Desk to book a haircut for tomorrow afternoon.",
-    "Alexa, open Front Desk and find a dog groomer near me.",
-    "Alexa, ask Front Desk when Maple Street Barbers is open.",
-    "Alexa, tell Front Desk to cancel my appointment."
+    "Alexa, ask OpenDesk to book a haircut for tomorrow afternoon.",
+    "Alexa, open OpenDesk and find a dog groomer near me.",
+    "Alexa, ask OpenDesk when Maple Street Barbers is open.",
+    "Alexa, tell OpenDesk to cancel my appointment."
   ],
   "icons": {
     "small": "REPLACE-ME-icon-small.png",

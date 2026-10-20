@@ -2,8 +2,9 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, businessDirectoryConfigured } from "./config.js";
 import { Store, DEMO_CUSTOMER } from "./store.js";
+import { loadBusinessesIntoStore } from "./businessDirectory.js";
 import { now } from "./clock.js";
 import { warmUp } from "./availability.js";
 import { registerTools, SERVER_INSTRUCTIONS } from "./mcp/tools.js";
@@ -18,6 +19,9 @@ const REMINDER_SWEEP_INTERVAL_MS = 30_000;
 export async function createApp() {
   const config = loadConfig();
   const store = await Store.load(config.dataFile);
+  if (businessDirectoryConfigured(config)) {
+    await loadBusinessesIntoStore(config, store);
+  }
 
   warmUp(store.data.businesses, store.data.appointments, now().toMillis());
 
@@ -49,7 +53,7 @@ export async function createApp() {
     const effectiveCustomerId = (req as express.Request & { customerId?: string }).customerId ?? DEMO_CUSTOMER.id;
 
     const mcpServer = new McpServer(
-      { name: "front-desk", version: "0.1.0" },
+      { name: "opendesk", version: "0.1.0" },
       { instructions: SERVER_INSTRUCTIONS, capabilities: { tools: {} } },
     );
     registerTools(mcpServer, { store, customerId: effectiveCustomerId, nowMs: now().toMillis() });
@@ -103,7 +107,7 @@ export async function createApp() {
 async function main() {
   const { app, config, store, reminderInterval } = await createApp();
   const server = app.listen(config.port, () => {
-    console.log(`Front Desk listening on port ${config.port} (auth mode: ${config.authMode})`);
+    console.log(`OpenDesk listening on port ${config.port} (auth mode: ${config.authMode})`);
   });
 
   async function shutdown() {

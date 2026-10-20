@@ -3,7 +3,9 @@ import { promisify } from "node:util";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import type { Config } from "./config.js";
-import type { Owner, OwnerSession } from "./types.js";
+import type { Owner, OwnerRole, OwnerSession } from "./types.js";
+
+const VALID_ROLES: OwnerRole[] = ["owner", "manager", "employee"];
 
 const scryptAsync = promisify(scrypt);
 
@@ -58,13 +60,20 @@ function getClient(region: string): MinimalDynamoClient {
   return client;
 }
 
-export async function signUpOwner(config: Config, params: { email: string; password: string; businessId: string }): Promise<Owner> {
+export async function signUpOwner(
+  config: Config,
+  params: { email: string; password: string; businessId: string; role?: OwnerRole },
+): Promise<Owner> {
   const email = params.email.trim().toLowerCase();
   if (!email || !params.password || !params.businessId) {
     throw new OwnerAuthError("Email, password, and business are required.");
   }
   if (params.password.length < 8) {
     throw new OwnerAuthError("Password must be at least 8 characters.");
+  }
+  const role = params.role ?? "owner";
+  if (!VALID_ROLES.includes(role)) {
+    throw new OwnerAuthError("Role must be owner, manager, or employee.");
   }
   const c = getClient(config.awsRegion);
   const existing = await c.send(new GetCommand({ TableName: config.dynamoOwnersTable, Key: { email } }));
@@ -76,6 +85,7 @@ export async function signUpOwner(config: Config, params: { email: string; passw
     email,
     passwordHash: await hashPassword(params.password),
     businessId: params.businessId,
+    role,
     createdAt: new Date().toISOString(),
   };
   await c.send(new PutCommand({ TableName: config.dynamoOwnersTable, Item: owner }));
@@ -103,6 +113,7 @@ export async function loginOwner(config: Config, email: string, password: string
     tokenHash: sha256Hex(token),
     ownerId: owner.id,
     businessId: owner.businessId,
+    role: owner.role,
     createdAt: new Date(nowMs).toISOString(),
     expiresAt: new Date(expiresAtMs).toISOString(),
     ttl: Math.floor(expiresAtMs / 1000),
@@ -115,6 +126,7 @@ export async function loginOwner(config: Config, email: string, password: string
 export interface SessionIdentity {
   ownerId: string;
   businessId: string;
+  role: OwnerRole;
 }
 
 /** Null for a missing, unknown, or expired session — callers should treat all three identically (redirect to /login). */
@@ -127,7 +139,7 @@ export async function getSessionOwner(config: Config, token: string | undefined)
   // Belt-and-suspenders: DynamoDB's TTL cleanup isn't instantaneous, so an
   // expired-but-not-yet-deleted item must still be rejected here.
   if (Date.parse(session.expiresAt) <= Date.now()) return null;
-  return { ownerId: session.ownerId, businessId: session.businessId };
+  return { ownerId: session.ownerId, businessId: session.businessId, role: session.role ?? "owner" };
 }
 
 export async function logoutOwner(config: Config, token: string | undefined): Promise<void> {

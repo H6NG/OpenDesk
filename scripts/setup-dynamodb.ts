@@ -4,8 +4,8 @@
  * `aws configure`) — nothing in the app itself ever creates/deletes tables.
  *
  * Usage:
- *   DYNAMODB_OWNERS_TABLE=front-desk-owners \
- *   DYNAMODB_SESSIONS_TABLE=front-desk-sessions \
+ *   DYNAMODB_OWNERS_TABLE=opendesk-owners \
+ *   DYNAMODB_SESSIONS_TABLE=opendesk-sessions \
  *   AWS_REGION=us-east-1 \
  *   npx tsx scripts/setup-dynamodb.ts
  *

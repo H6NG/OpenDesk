@@ -61,6 +61,13 @@
       <div id="signup-fields">
         <label for="business">Business</label>
         <select id="business"></select>
+
+        <label for="role">Your role</label>
+        <select id="role">
+          <option value="owner">Owner — full access</option>
+          <option value="manager">Manager — can manage staff and pricing, same as owner</option>
+          <option value="employee">Employee — schedule, orders, and time off only, no pricing or staff changes</option>
+        </select>
       </div>
 
       <label for="password">Password</label>
@@ -126,7 +133,10 @@
         email: document.getElementById("email").value,
         password: passwordInput.value,
       };
-      if (mode === "signup") body.businessId = businessSelect.value;
+      if (mode === "signup") {
+        body.businessId = businessSelect.value;
+        body.role = document.getElementById("role").value;
+      }
       const res = await fetch(mode === "signup" ? "/api/signup" : "/api/login", {
         method: "POST",
         headers: { "content-type": "application/json" },

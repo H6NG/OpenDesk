@@ -23,6 +23,7 @@ const CONFIG: Config = {
   twilioFromNumber: "",
   dynamoOwnersTable: "",
   dynamoSessionsTable: "",
+  dynamoBusinessesTable: "",
 };
 
 const BUSINESS_ID = "maple-street-barbers";

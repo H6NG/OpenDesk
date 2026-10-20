@@ -1,4 +1,4 @@
-Build "Front Desk": an Alexa+ MCP server that gives small local businesses (barbers, clinics, pet groomers) voice booking. This is for the Alexa+ track of the Amazon Developer Hackathon (deadline Oct 23, 2026), plus the AWS Builder mini challenge (Amazon Bedrock). Work in phases, run the tests after each phase, and don't stop until every test passes.
+Build "OpenDesk": an Alexa+ MCP server that gives small local businesses (barbers, clinics, pet groomers) voice booking. This is for the Alexa+ track of the Amazon Developer Hackathon (deadline Oct 23, 2026), plus the AWS Builder mini challenge (Amazon Bedrock). Work in phases, run the tests after each phase, and don't stop until every test passes.
 
 ## Hard requirements (from the Alexa+ MCP Toolkit docs)
 - MCP spec 2025-11-25 exactly (Alexa+ supports 2025-11-25; do NOT target the newer stateless 2026-07-28 revision). Transport: Streamable HTTP. Use the official @modelcontextprotocol/sdk (TypeScript, v1.32.x, which reports LATEST_PROTOCOL_VERSION 2025-11-25).

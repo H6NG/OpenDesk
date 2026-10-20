@@ -77,6 +77,9 @@ export interface Customer {
 // otherwise, same as before this feature existed.)
 // ---------------------------------------------------------------------------
 
+/** owner: full access. manager: everything but staff roster changes and pricing. employee: schedule/orders/time-off only, no pricing or roster changes. */
+export type OwnerRole = "owner" | "manager" | "employee";
+
 export interface Owner {
   id: string;
   email: string;
@@ -84,6 +87,7 @@ export interface Owner {
   passwordHash: string;
   /** Each owner account is scoped to exactly one business — no cross-business visibility. */
   businessId: string;
+  role: OwnerRole;
   createdAt: string;
 }
 
@@ -92,6 +96,7 @@ export interface OwnerSession {
   tokenHash: string;
   ownerId: string;
   businessId: string;
+  role: OwnerRole;
   createdAt: string;
   expiresAt: string;
   /** Epoch seconds — DynamoDB's native TTL attribute, so expired sessions clean themselves up. */

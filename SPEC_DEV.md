@@ -1,4 +1,4 @@
-Continue building "Front Desk" on the `dev` branch. The hackathon submission on
+Continue building "OpenDesk" on the `dev` branch. The hackathon submission on
 `main` is already complete and frozen (SPEC.md, PROGRESS.md, FINAL_REPORT.md,
 DONE all describe that finished state — do not edit those files, do not touch
 `main`). This spec adds optional stretch features on top of it. Work in

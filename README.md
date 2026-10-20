@@ -1,6 +1,6 @@
-# Front Desk
+# OpenDesk
 
-Front Desk gives small local businesses (barbers, clinics, pet groomers) voice
+OpenDesk gives small local businesses (barbers, clinics, pet groomers) voice
 booking on Alexa+, with zero app to build. It's an MCP server: Alexa+ calls it
 directly over the Model Context Protocol, and an owner dashboard lets a
 business see their book, run a Bedrock-powered daily briefing, and onboard
@@ -14,7 +14,7 @@ Builder mini challenge (Amazon Bedrock) and the Open Source mini challenge
 
 Small shops run on a phone line and a paper book. Alexa+ can now call tools
 directly mid-conversation, so a customer can just ask their Echo to book a
-haircut, the same way they'd ask a human receptionist. Front Desk is that
+haircut, the same way they'd ask a human receptionist. OpenDesk is that
 receptionist: it knows the business's real services, staff, hours, and
 appointment book, and it never confirms anything without reading it back
 first.
@@ -29,7 +29,7 @@ flowchart LR
 
     Alexa_Service -->|Streamable HTTP, Bearer token| MCP["POST /mcp\nstateless McpServer + transport per request"]
 
-    subgraph Server["Front Desk server (Express)"]
+    subgraph Server["OpenDesk server (Express)"]
       MCP --> Tools[9 MCP tools]
       Tools --> Booking[booking.ts]
       Tools --> Availability[availability.ts]
@@ -126,7 +126,7 @@ npm test
    images, privacy/terms URLs, and the MCP endpoint URL) and submit it through
    the Alexa+ developer console's MCP Toolkit flow.
 4. Alexa+ will discover auth via `/.well-known/oauth-protected-resource` and
-   `/.well-known/oauth-authorization-server`, which Front Desk serves itself,
+   `/.well-known/oauth-authorization-server`, which OpenDesk serves itself,
    no third-party auth provider needed.
 
 For local development without a real Alexa+ submission, `cloudflared` gives
@@ -142,23 +142,23 @@ Then connect with the `alexa-ai` CLI (or any MCP-compatible client) against
 ## Deploy to AWS App Runner
 
 ```sh
-docker build -t front-desk .
-docker run --rm -p 3000:3000 --env-file .env front-desk   # smoke test locally
+docker build -t opendesk .
+docker run --rm -p 3000:3000 --env-file .env opendesk   # smoke test locally
 ```
 
 Push the image to Amazon ECR, then create an App Runner service from it:
 
 ```sh
-aws ecr create-repository --repository-name front-desk
-docker tag front-desk:latest <account-id>.dkr.ecr.<region>.amazonaws.com/front-desk:latest
+aws ecr create-repository --repository-name opendesk
+docker tag opendesk:latest <account-id>.dkr.ecr.<region>.amazonaws.com/opendesk:latest
 aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/front-desk:latest
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/opendesk:latest
 
 aws apprunner create-service \
-  --service-name front-desk \
+  --service-name opendesk \
   --source-configuration '{
     "ImageRepository": {
-      "ImageIdentifier": "<account-id>.dkr.ecr.<region>.amazonaws.com/front-desk:latest",
+      "ImageIdentifier": "<account-id>.dkr.ecr.<region>.amazonaws.com/opendesk:latest",
       "ImageRepositoryType": "ECR",
       "ImageConfiguration": { "Port": "3000" }
     },

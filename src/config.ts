@@ -17,6 +17,7 @@ export interface Config {
   twilioFromNumber: string;
   dynamoOwnersTable: string;
   dynamoSessionsTable: string;
+  dynamoBusinessesTable: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -41,10 +42,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     twilioFromNumber: env.TWILIO_FROM_NUMBER ?? "",
     dynamoOwnersTable: env.DYNAMODB_OWNERS_TABLE ?? "",
     dynamoSessionsTable: env.DYNAMODB_SESSIONS_TABLE ?? "",
+    dynamoBusinessesTable: env.DYNAMODB_BUSINESSES_TABLE ?? "",
   };
 }
 
 /** Owner-login (DynamoDB) is entirely optional: the dashboard works exactly as before (unauthenticated, or gated by the single-shared DASHBOARD_TOKEN) until both tables are configured. */
 export function ownerAuthConfigured(config: Config): boolean {
   return Boolean(config.dynamoOwnersTable && config.dynamoSessionsTable);
+}
+
+/** Business directory (DynamoDB) is entirely optional: without it, find_businesses and the dashboard only ever see the seeded demo businesses. */
+export function businessDirectoryConfigured(config: Config): boolean {
+  return Boolean(config.dynamoBusinessesTable);
 }

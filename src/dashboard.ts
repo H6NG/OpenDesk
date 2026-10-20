@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import { DateTime } from "luxon";
 import type { Config } from "./config.js";
-import { ownerAuthConfigured } from "./config.js";
+import { ownerAuthConfigured, businessDirectoryConfigured } from "./config.js";
 import type { Store } from "./store.js";
 import { now } from "./clock.js";
 import { onboardBusiness, dailyBriefing } from "./bedrock.js";
@@ -12,7 +12,8 @@ import { computeAnalytics } from "./analytics.js";
 import { addStaffTimeOff, removeStaffTimeOff, listStaffTimeOff } from "./staffTimeOff.js";
 import { markOrderReady, markOrderPickedUp, findOrderByIdOrCode } from "./catalog.js";
 import { signUpOwner, loginOwner, logoutOwner, getSessionOwner, OwnerAuthError } from "./owners.js";
-import type { Business } from "./types.js";
+import { putBusiness } from "./businessDirectory.js";
+import type { Business, OwnerRole } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "..", "public");
@@ -24,6 +25,7 @@ declare global {
   namespace Express {
     interface Request {
       ownerBusinessId?: string;
+      ownerRole?: OwnerRole;
     }
   }
 }
@@ -75,6 +77,7 @@ function requireOwnerSessionApi(config: Config) {
       return;
     }
     req.ownerBusinessId = identity.businessId;
+    req.ownerRole = identity.role;
     next();
   };
 }
@@ -88,6 +91,7 @@ function requireOwnerSessionPage(config: Config) {
       return;
     }
     req.ownerBusinessId = identity.businessId;
+    req.ownerRole = identity.role;
     next();
   };
 }
@@ -102,6 +106,16 @@ function assertOwnsBusiness(req: express.Request, res: express.Response, ownerAu
   if (!ownerAuthOn) return true;
   if (businessId !== req.ownerBusinessId) {
     res.status(403).json({ error: "That business isn't linked to your account." });
+    return false;
+  }
+  return true;
+}
+
+/** Role gate for routes an employee shouldn't reach (pricing, staff roster). No-op when owner-auth is off — roles only exist inside real sessions. */
+function assertRole(req: express.Request, res: express.Response, ownerAuthOn: boolean, allowed: OwnerRole[]): boolean {
+  if (!ownerAuthOn) return true;
+  if (req.ownerRole && !allowed.includes(req.ownerRole)) {
+    res.status(403).json({ error: "Your role doesn't have access to this action." });
     return false;
   }
   return true;
@@ -148,7 +162,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       return;
     }
     const identity = await getSessionOwner(config, readCookie(req, SESSION_COOKIE));
-    res.json({ ownerAuthEnabled: true, authenticated: Boolean(identity), businessId: identity?.businessId });
+    res.json({ ownerAuthEnabled: true, authenticated: Boolean(identity), businessId: identity?.businessId, role: identity?.role });
   });
 
   // Unauthenticated by design: name + id only, same info the public find_businesses MCP tool already exposes. Used to populate the signup page's business picker.
@@ -161,9 +175,13 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       res.status(503).json({ error: "Owner accounts aren't configured on this server." });
       return;
     }
-    const { email, password, businessId } = req.body ?? {};
+    const { email, password, businessId, role } = req.body ?? {};
     if (typeof email !== "string" || typeof password !== "string" || typeof businessId !== "string") {
       res.status(400).json({ error: "email, password, and businessId are required." });
+      return;
+    }
+    if (role !== undefined && role !== "owner" && role !== "manager" && role !== "employee") {
+      res.status(400).json({ error: "role must be owner, manager, or employee." });
       return;
     }
     if (!store.getBusiness(businessId)) {
@@ -171,7 +189,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       return;
     }
     try {
-      await signUpOwner(config, { email, password, businessId });
+      await signUpOwner(config, { email, password, businessId, role });
       const { token, expiresAt } = await loginOwner(config, email, password);
       setSessionCookie(req, res, token, expiresAt);
       res.status(201).json({ ok: true, businessId });
@@ -316,6 +334,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       return;
     }
     if (!assertOwnsBusiness(req, res, ownerAuthOn, businessId)) return;
+    if (!assertRole(req, res, ownerAuthOn, ["owner", "manager"])) return;
     const business = store.getBusiness(businessId);
     if (!business) {
       res.status(404).json({ error: "Unknown business." });
@@ -340,6 +359,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
       return;
     }
     if (!assertOwnsBusiness(req, res, ownerAuthOn, businessId)) return;
+    if (!assertRole(req, res, ownerAuthOn, ["owner", "manager"])) return;
     const business = store.getBusiness(businessId);
     if (!business) {
       res.status(404).json({ error: "Unknown business." });
@@ -480,7 +500,7 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
     }
   });
 
-  app.post("/api/businesses", ...api, (req, res) => {
+  app.post("/api/businesses", ...api, async (req, res) => {
     if (ownerAuthOn) {
       // An owner account is scoped to exactly one (already-existing) business — publishing a brand new
       // business doesn't fit that model and isn't something a single-business session should be able to do.
@@ -495,6 +515,14 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
     if (store.getBusiness(business.id)) {
       res.status(409).json({ error: "A business with that id already exists." });
       return;
+    }
+    if (businessDirectoryConfigured(config)) {
+      try {
+        await putBusiness(config, business);
+      } catch (e) {
+        res.status(502).json({ error: "Failed to save the business to the directory: " + (e instanceof Error ? e.message : "unknown error") });
+        return;
+      }
     }
     store.data.businesses.push(business);
     store.touch();

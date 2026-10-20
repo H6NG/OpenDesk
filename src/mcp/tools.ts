@@ -48,7 +48,7 @@ export interface RequestContext {
   nowMs: number;
 }
 
-export const SERVER_INSTRUCTIONS = `Front Desk books appointments for small local businesses over voice.
+export const SERVER_INSTRUCTIONS = `OpenDesk books appointments for small local businesses over voice.
 
 Flow: find_businesses -> get_business_details -> find_availability -> hold_appointment -> read the hold back to the customer and get an explicit yes -> confirm_appointment.
 

@@ -28,6 +28,7 @@ const BASE_CONFIG: Config = {
   twilioFromNumber: "",
   dynamoOwnersTable: OWNERS_TABLE,
   dynamoSessionsTable: SESSIONS_TABLE,
+  dynamoBusinessesTable: "",
 };
 
 /** In-memory stand-in for DynamoDBDocumentClient, good enough for Get/Put/Delete by primary key — exactly what owners.ts uses. */
@@ -83,7 +84,7 @@ describe("signUpOwner / loginOwner / getSessionOwner / logoutOwner", () => {
     assert.equal(loggedIn.id, owner.id);
 
     const identity = await getSessionOwner(BASE_CONFIG, token);
-    assert.deepEqual(identity, { ownerId: owner.id, businessId: "shop-a" });
+    assert.deepEqual(identity, { ownerId: owner.id, businessId: "shop-a", role: "owner" });
 
     await logoutOwner(BASE_CONFIG, token);
     assert.equal(await getSessionOwner(BASE_CONFIG, token), null);
@@ -204,5 +205,51 @@ describe("dashboard routes with owner-auth enabled (in-process, stub Dynamo clie
     await fetch(`${baseUrl}/api/logout`, { method: "POST", headers: { cookie } });
     const res = await fetch(`${baseUrl}/api/state`, { headers: { cookie } });
     assert.equal(res.status, 401);
+  });
+
+  it("rejects an invalid role at signup", async () => {
+    const res = await fetch(`${baseUrl}/api/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "bad-role@shop-a.com", password: "correct-horse", businessId: "shop-a", role: "superadmin" }),
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it("an employee session is blocked from adding staff or products; a manager session is allowed", async () => {
+    const employeeSignup = await fetch(`${baseUrl}/api/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "employee@shop-a.com", password: "correct-horse", businessId: "shop-a", role: "employee" }),
+    });
+    const employeeCookie = cookieFrom(employeeSignup);
+
+    const blockedStaff = await fetch(`${baseUrl}/api/staff`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: employeeCookie },
+      body: JSON.stringify({ businessId: "shop-a", name: "New Hire", title: "Barber", serviceIds: ["mens-cut"] }),
+    });
+    assert.equal(blockedStaff.status, 403);
+
+    const blockedProduct = await fetch(`${baseUrl}/api/products`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: employeeCookie },
+      body: JSON.stringify({ businessId: "shop-a", name: "Pomade", priceCents: 1500, stockQty: 5 }),
+    });
+    assert.equal(blockedProduct.status, 403);
+
+    const managerSignup = await fetch(`${baseUrl}/api/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "manager@shop-a.com", password: "correct-horse", businessId: "shop-a", role: "manager" }),
+    });
+    const managerCookie = cookieFrom(managerSignup);
+
+    const allowedProduct = await fetch(`${baseUrl}/api/products`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: managerCookie },
+      body: JSON.stringify({ businessId: "shop-a", name: "Pomade", priceCents: 1500, stockQty: 5 }),
+    });
+    assert.equal(allowedProduct.status, 201);
   });
 });

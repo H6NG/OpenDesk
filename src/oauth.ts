@@ -75,7 +75,7 @@ export function registerOAuthRoutes(app: express.Express, config: Config, store:
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Link your account - Front Desk</title>
+<title>Link your account - OpenDesk</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   body { font-family: system-ui, sans-serif; background: #eef2f0; color: #1b2a41; display: flex; min-height: 100vh; align-items: center; justify-content: center; margin: 0; }
@@ -89,7 +89,7 @@ export function registerOAuthRoutes(app: express.Express, config: Config, store:
 </head>
 <body>
   <form method="post" action="/oauth/authorize">
-    <h1>Link your account to Front Desk</h1>
+    <h1>Link your account to OpenDesk</h1>
     <label for="name">Name</label>
     <input type="text" id="name" name="name" required>
     <label for="phone">Phone number</label>

@@ -6,7 +6,7 @@ import { now } from "./clock.js";
 
 const SAVE_BUSINESS_TOOL = "save_business";
 
-const SYSTEM_PROMPT = `You help onboard small local businesses onto the Front Desk voice booking platform.
+const SYSTEM_PROMPT = `You help onboard small local businesses onto the OpenDesk voice booking platform.
 Given a free-text description of a business, extract a complete, consistent structured catalog by calling save_business: services with realistic durations and prices, staff with the services each one can perform, weekly hours, address, and policy.
 Every service must be assignable to at least one staff member. Use 24-hour "HH:MM" strings for hours. Always call save_business; never reply with plain text.`;
 

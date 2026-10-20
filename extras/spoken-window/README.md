@@ -4,7 +4,7 @@ Parse spoken scheduling phrases into a search window. Built for voice assistants
 and chat agents that need to turn phrases like *"thursday after work"* or
 *"next weekend"* into something a scheduling backend can actually query.
 
-Extracted from [Front Desk](../../README.md), an Alexa+ MCP server for small
+Extracted from [OpenDesk](../../README.md), an Alexa+ MCP server for small
 business voice booking, where it resolves phrases spoken to Alexa+ into
 appointment search windows.
 

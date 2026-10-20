@@ -127,7 +127,84 @@ export function seedBusinesses(): Business[] {
     createdVia: "seed",
   };
 
-  return [mapleStreetBarbers, harbourPhysioMassage, pawsAndSudsGrooming];
+  const alderHouseHotel: Business = {
+    id: "alder-house-hotel",
+    name: "The Alder House Hotel",
+    category: "hotel",
+    keywords: ["hotel", "concierge", "front desk", "spa", "shuttle", "room service", "checkout"],
+    address: "500 Alder Avenue",
+    city: "Los Angeles",
+    phone: "+1-213-555-0104",
+    timezone: LA,
+    hours: {
+      1: [["07:00", "21:00"]],
+      2: [["07:00", "21:00"]],
+      3: [["07:00", "21:00"]],
+      4: [["07:00", "21:00"]],
+      5: [["07:00", "21:00"]],
+      6: [["07:00", "21:00"]],
+      7: [["07:00", "21:00"]],
+    },
+    services: [
+      { id: "spa-treatment", name: "Spa Treatment", durationMin: 60, priceCents: 13000 },
+      { id: "late-checkout", name: "Late Checkout Request", durationMin: 15, priceCents: 2500 },
+      { id: "early-checkin", name: "Early Check-in Request", durationMin: 15, priceCents: 0 },
+      { id: "airport-shuttle", name: "Airport Shuttle Reservation", durationMin: 20, priceCents: 0 },
+    ],
+    staff: [
+      { id: "owen", name: "Owen", title: "Concierge", serviceIds: ["late-checkout", "early-checkin", "airport-shuttle"] },
+      { id: "mireille", name: "Mireille", title: "Spa Concierge", serviceIds: ["spa-treatment", "late-checkout"] },
+    ],
+    // Room types, modeled as stock-tracked products: price = per-night rate, stockQty = rooms of that type currently available.
+    products: [
+      { id: "standard-king", name: "Standard King Room (per night)", description: "King bed, city view, sleeps 2", priceCents: 18900, stockQty: 12 },
+      { id: "deluxe-queen", name: "Deluxe Queen Room (per night)", description: "Two queen beds, sleeps 4", priceCents: 15900, stockQty: 18 },
+      { id: "executive-suite", name: "Executive Suite (per night)", description: "Separate living area, skyline view, sleeps 2", priceCents: 34900, stockQty: 4 },
+    ],
+    bufferMin: 10,
+    slotStepMin: 15,
+    leadTimeMin: 30,
+    cancelNoticeHours: 4,
+    policyNote: "Concierge requests can be cancelled up to 4 hours in advance without a fee.",
+    createdVia: "seed",
+  };
+
+  const cornerMarketGroceries: Business = {
+    id: "corner-market-groceries",
+    name: "Corner Market Groceries",
+    category: "groceries",
+    keywords: ["grocery", "groceries", "supermarket", "corner store", "produce", "pantry", "curbside pickup"],
+    address: "12 Oakview Avenue",
+    city: "Los Angeles",
+    phone: "+1-213-555-0105",
+    timezone: LA,
+    hours: {
+      1: [["08:00", "21:00"]],
+      2: [["08:00", "21:00"]],
+      3: [["08:00", "21:00"]],
+      4: [["08:00", "21:00"]],
+      5: [["08:00", "21:00"]],
+      6: [["08:00", "21:00"]],
+      7: [["09:00", "19:00"]],
+    },
+    services: [{ id: "personal-shopping", name: "Personal Shopping & Curbside Pickup", durationMin: 20, priceCents: 0 }],
+    staff: [{ id: "deb", name: "Deb", title: "Personal Shopper", serviceIds: ["personal-shopping"] }],
+    products: [
+      { id: "bananas", name: "Organic Bananas (bunch)", description: "Fair-trade organic bananas", priceCents: 249, stockQty: 40 },
+      { id: "whole-milk", name: "Whole Milk (1 gal)", description: "Local dairy, vitamin D whole milk", priceCents: 429, stockQty: 25 },
+      { id: "sourdough", name: "Sourdough Bread (loaf)", description: "Baked fresh daily", priceCents: 549, stockQty: 15 },
+      { id: "eggs-dozen", name: "Free-Range Eggs (dozen)", description: "Large free-range eggs", priceCents: 599, stockQty: 30 },
+      { id: "avocados", name: "Avocados (each)", description: "Hass avocados", priceCents: 179, stockQty: 0 },
+    ],
+    bufferMin: 5,
+    slotStepMin: 15,
+    leadTimeMin: 15,
+    cancelNoticeHours: 1,
+    policyNote: "Curbside pickup orders are held for 24 hours.",
+    createdVia: "seed",
+  };
+
+  return [mapleStreetBarbers, harbourPhysioMassage, pawsAndSudsGrooming, alderHouseHotel, cornerMarketGroceries];
 }
 
 const FAKE_CUSTOMER_NAMES = [
