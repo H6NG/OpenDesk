@@ -10,6 +10,10 @@ Built for the Alexa+ track of the Amazon Developer Hackathon, plus the AWS
 Builder mini challenge (Amazon Bedrock) and the Open Source mini challenge
 (see [extras/spoken-window](extras/spoken-window)).
 
+## Demo
+
+[▶ Watch the demo video](docs/demo.mp4)
+
 ## Why this, and why now
 
 Small shops run on a phone line and a paper book. Alexa+ can now call tools

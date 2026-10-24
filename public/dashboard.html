@@ -883,7 +883,11 @@
       const data = await getJSON("/api/analytics?" + qs);
       renderAnalytics(data);
     } catch (e) {
-      body.innerHTML = '<p class="muted">Could not load analytics: ' + e.message + "</p>";
+      body.textContent = "";
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Could not load analytics: " + e.message;
+      body.appendChild(p);
     }
   }
 
