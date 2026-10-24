@@ -7,7 +7,7 @@ import { ownerAuthConfigured, businessDirectoryConfigured } from "./config.js";
 import type { Store } from "./store.js";
 import { now } from "./clock.js";
 import { onboardBusiness, dailyBriefing } from "./bedrock.js";
-import { BookingError, createManualAppointment } from "./booking.js";
+import { BookingError, createManualAppointment, cancelAppointmentAsOwner } from "./booking.js";
 import { computeAnalytics } from "./analytics.js";
 import { addStaffTimeOff, removeStaffTimeOff, listStaffTimeOff } from "./staffTimeOff.js";
 import { markOrderReady, markOrderPickedUp, findOrderByIdOrCode } from "./catalog.js";
@@ -446,6 +446,26 @@ export function registerDashboardRoutes(app: express.Express, config: Config, st
         return;
       }
       res.status(500).json({ error: "Could not create the appointment." });
+    }
+  });
+
+  app.post("/api/appointments/:idOrCode/cancel", ...api, (req, res) => {
+    const { businessId } = req.body ?? {};
+    const idOrCode = req.params.idOrCode;
+    if (typeof businessId !== "string" || typeof idOrCode !== "string") {
+      res.status(400).json({ error: "businessId is required." });
+      return;
+    }
+    if (!assertOwnsBusiness(req, res, ownerAuthOn, businessId)) return;
+    try {
+      const result = cancelAppointmentAsOwner(store, now().toMillis(), businessId, idOrCode);
+      res.json({ appointment: result.appointment, lateFee: result.lateFee, waitlistOffered: Boolean(result.waitlistOffered) });
+    } catch (e) {
+      if (e instanceof BookingError) {
+        res.status(400).json({ error: e.message });
+        return;
+      }
+      res.status(500).json({ error: "Could not cancel the appointment." });
     }
   });
 

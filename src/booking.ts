@@ -584,7 +584,25 @@ export function cancelAppointment(
   const appointment = findAppointmentByIdOrCode(store, idOrCode);
   if (!appointment) throw new BookingError("I couldn't find that appointment. Use list_my_appointments to check the code.");
   if (appointment.customerId !== customerId) throw new BookingError("That appointment belongs to a different customer.");
+  return performCancel(store, nowMs, appointment, scope);
+}
 
+/** Owner-dashboard counterpart to cancelAppointment: authorizes by business ownership instead of the caller being the booking customer. */
+export function cancelAppointmentAsOwner(
+  store: Store,
+  nowMs: number,
+  businessId: string,
+  idOrCode: string,
+  scope: "this" | "series" = "this",
+): CancelResult {
+  sweepExpiredHolds(store, nowMs);
+  const appointment = findAppointmentByIdOrCode(store, idOrCode);
+  if (!appointment) throw new BookingError("I couldn't find that appointment.");
+  if (appointment.businessId !== businessId) throw new BookingError("That appointment isn't linked to this business.");
+  return performCancel(store, nowMs, appointment, scope);
+}
+
+function performCancel(store: Store, nowMs: number, appointment: Appointment, scope: "this" | "series"): CancelResult {
   const business = requireBusiness(store, appointment.businessId);
   const service = requireService(business, appointment.serviceId);
 

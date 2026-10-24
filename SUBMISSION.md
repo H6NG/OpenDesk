@@ -2,8 +2,9 @@
 
 ## Devpost description
 
-**OpenDesk** is an Alexa+ MCP server that gives small local businesses,
-barbershops, physio and massage clinics, pet groomers, real voice booking,
+**OpenDesk** is an Alexa+ MCP server that turns any small local business, a
+barbershop, a physio clinic, a pet groomer, a hotel concierge desk, even a
+corner grocery store, into something a customer can book entirely by voice,
 with no app for the customer and no app to build for the owner.
 
 A customer just asks: *"Alexa, ask OpenDesk to book a haircut for tomorrow
@@ -11,14 +12,19 @@ after work."* OpenDesk finds the business, checks real availability against
 staff schedules and buffer times, holds the slot, reads it back for
 confirmation, and books it, spelling the confirmation code aloud so it's easy
 to catch. It also handles rescheduling, cancellations with late-fee warnings,
-and waitlists that automatically re-offer a slot the moment it frees up.
+waitlists that automatically re-offer a slot the moment it frees up, and
+stock-tracked product orders (groceries, retail items) for businesses that
+sell things instead of, or alongside, appointments.
 
-On the business side, an owner gets a dashboard that looks like a paper
-appointment book: a per-staff timeline with a live "now" line, a waitlist
-panel, and a live activity feed of every voice booking as it happens. Owners
-onboard their whole catalog, services, prices, staff, hours, by typing a
-plain-English description into a box and letting Amazon Bedrock (Nova Lite)
-turn it into a structured, bookable business in one tool call.
+On the business side, an owner gets a real dashboard: a per-staff timeline
+with a live "now" line, a waitlist panel, a professional analytics view
+(bookings, revenue, channel split), and a live activity feed of every voice
+booking as it happens. Accounts are real and DynamoDB-backed, with
+owner/manager/employee roles so staff can be given dashboard access without
+handing over pricing control. Owners onboard their whole catalog, services,
+prices, staff, hours, by typing a plain-English description into a box and
+letting Amazon Bedrock (Nova Lite) turn it into a structured, bookable
+business in one tool call.
 
 Technically, it's a stateless Streamable HTTP MCP server (MCP spec
 2025-11-25): every request gets a fresh `McpServer` and transport, so there's
@@ -88,39 +94,60 @@ Alexa+ console UX friction.]
 
 ## 2:45 demo video script
 
+A note on what's shown: the real Alexa+ add-on console is not open to the public
+yet (confirmed directly with the hackathon's own team — no escalation path, no
+sandbox account available). The hackathon rules explicitly allow for this:
+"you can simulate an Alexa+ experience using your preferred agentic tools via
+a web app." This script uses an MCP client (Claude Desktop, via `mcp-remote`)
+talking to the real, running OpenDesk server, not Alexa+ hardware or a mock.
+Every tool call shown is real.
+
 **0:00-0:15, hook.** Cold open on a phone ringing at a barbershop, nobody
-picks up. Cut to: *"Alexa, ask OpenDesk to book a haircut at Maple Street
-Barbers for tomorrow after work."* Alexa+ responds immediately.
+picks up. Cut to a chat client: *"book a haircut at Maple Street Barbers for
+tomorrow after work."* The response comes back immediately. Voiceover (or a
+title card): "This is OpenDesk, a real MCP server, simulating the Alexa+
+conversation since the add-on console isn't public yet."
 
 **0:15-0:55, the booking flow.** Screen recording of the conversation:
-finding the business, hearing services and prices, Alexa+ reading back a
-specific slot and price, the explicit "should I book it?", the confirmation
-with the spelled-out code. Voiceover: "OpenDesk is a real MCP server. Every
-one of these calls is a tool call, under ten milliseconds, with the real
-appointment book behind it, not a script."
+finding the business, hearing services and prices, a specific slot and price
+read back, the explicit "should I book it?", the confirmation with the
+spelled-out code. Voiceover: "177 automated tests behind it. Every one of
+these is a real tool call, measured live at 2 milliseconds median, 5 at the
+95th percentile, against the real appointment book, not a script."
 
-**0:55-1:30, the dashboard.** Cut to the owner dashboard: the paper
+**0:55-1:20, more than one kind of business.** Quick montage, four cuts:
+*"find a dog groomer,"* *"...book a massage,"* *"...order a Standard King
+Room for tonight at the Alder House Hotel,"* *"...order bananas for
+pickup."* Voiceover: "Same server, five different kinds of business, barber,
+physio, pet groomer, hotel, grocery store, because the catalog is just data,
+not code written for one use case, appointments and stock-tracked orders
+both come from the same tools."
+
+**1:20-1:55, the dashboard.** Cut to the owner dashboard: the paper
 appointment-book timeline, a teal block appearing live as the booking from
-0:15 lands, the "now" line, the activity feed lighting up. Voiceover: "The
-owner sees it land in real time, color-coded: teal for voice bookings, amber
-for holds that haven't confirmed yet, violet for waitlist offers."
+earlier lands, the "now" line, the activity feed lighting up, then a cut to
+the analytics panel's real charts. Voiceover: "The owner sees it land in
+real time, color-coded, with real analytics underneath it." Quick beat:
+log in as an employee account, try to edit a product's price, get blocked.
+"Role-based accounts mean a manager can touch pricing and staffing, and an
+employee can't, without the owner handing over the whole account."
 
-**1:30-2:00, cancellation and the waitlist.** A second, pre-recorded customer
-says *"Alexa, cancel my appointment."* Cut to the dashboard: the slot clears,
-and a violet waitlist-offer block appears instantly for a waiting customer.
-Voiceover: "OpenDesk doesn't just free the slot, it offers it to the next
-person in line, automatically."
+**1:55-2:25, cancellation and the waitlist.** A second, pre-recorded
+customer cancels their appointment through the chat client. Cut to the
+dashboard: the slot clears, and a violet waitlist-offer block appears
+instantly for a waiting customer. Voiceover: "OpenDesk doesn't just free the
+slot, it offers it to the next person in line, automatically."
 
-**2:00-2:30, Bedrock onboarding.** Cut to the dashboard's onboarding panel.
-Type a two-sentence description of a fictional new business. Click "Build
-catalog with Bedrock." A full services/staff/price table appears in seconds.
-Click "Publish to Alexa+." Voiceover: "That's Amazon Bedrock turning plain
-English into a bookable business, no spreadsheet, no form with forty fields."
-
-**2:30-2:45, close.** Back to the OpenDesk logo and the one-line pitch:
+**2:25-2:45, close.** Back to the OpenDesk logo and the one-line pitch:
 "OpenDesk: voice booking for the businesses that never had an app budget."
 End on the GitHub repo URL.
 
-[YOU: swap in your actual device/voice footage, your actual repo URL, and
-adjust timings once you've recorded a real take, scripted timing always
-drifts a few seconds once a real voice and a real Echo are in the loop.]
+[YOU: swap in your actual screen recording and repo URL, and adjust timings
+once you've recorded a real take. The 177-test and 2ms/5ms numbers above are
+real, measured live against this server tonight, re-measure right before
+recording in case the test count or load has changed, don't just read these
+off without checking. No Bedrock-dependent beat in this version, on purpose:
+Bedrock onboarding is fully built and tested (see the AWS Builder answer
+above) but blocked by a confirmed, Amazon-acknowledged account-level quota
+restriction with no available escalation before the deadline, so it isn't
+demoed live.]

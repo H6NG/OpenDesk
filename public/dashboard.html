@@ -24,6 +24,12 @@
     --now-line: #d1393f;
     --closed-stripe: rgba(27, 42, 65, 0.06);
     --radius: 10px;
+    /* Chart-only categorical triplet, validated against the dataviz skill's lightness-band and
+       chroma-floor checks for this surface — nudged from --voice/--hold/--offer where those two
+       checks failed (CVD separation/contrast already passed); brand colors elsewhere untouched. */
+    --chart-voice: #00859b;
+    --chart-hold: #b9790f;
+    --chart-offer: #6a4fb0;
   }
   html[data-theme="dark"] {
     --paper: #10161b;
@@ -39,6 +45,9 @@
     --offer-soft: #2c2440;
     --now-line: #ff6b6f;
     --closed-stripe: rgba(255, 255, 255, 0.04);
+    --chart-voice: #009fa8;
+    --chart-hold: #bf8a26;
+    --chart-offer: #9077c5;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -71,6 +80,18 @@
     color: var(--ink);
     padding: 0.5rem;
   }
+  select {
+    appearance: none; -webkit-appearance: none;
+    cursor: pointer;
+    padding-right: 2.1rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2352637a' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+  html[data-theme="dark"] select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%239aabb8' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  select:hover { border-color: var(--voice); }
 
   #business-picker {
     appearance: none;
@@ -142,9 +163,15 @@
   .spacer { flex: 1 1 auto; }
   .endpoint-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--ink-soft); flex-wrap: wrap; }
   .endpoint-row code { background: var(--paper); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.45rem; color: var(--ink); }
-  .status-pill { font-size: 0.78rem; color: var(--ink-soft); border: 1px solid var(--border); border-radius: 999px; padding: 0.25rem 0.6rem; }
+  .status-pill { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: var(--ink-soft); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.25rem 0.65rem 0.25rem 0.55rem; }
+  .health-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: var(--ink-soft); }
+  .health-dot.ok { background: #2e9e5b; }
+  .health-dot.warn { background: #d9a521; }
+  .health-dot.bad { background: var(--now-line); }
+  html[data-theme="dark"] .health-dot.ok { background: #3fc373; }
+  html[data-theme="dark"] .health-dot.warn { background: #e8bb4a; }
 
-  main { flex: 1 1 auto; overflow-y: auto; padding: 1.1rem 1.25rem; }
+  main { flex: 1 1 auto; overflow: auto; padding: 1.1rem 1.25rem; }
   .panel[hidden] { display: none; }
   .panel > h2:first-child { font-size: 1.1rem; }
 
@@ -177,7 +204,7 @@
   .day-tab.active { background: var(--voice); color: #fff; border-color: var(--voice); }
   .day-tab .voice-count { opacity: 0.85; }
 
-  .timeline-wrap { overflow-x: auto; max-width: 100%; }
+  .timeline-wrap { max-width: 100%; }
   .timeline {
     display: grid;
     grid-auto-flow: column;
@@ -198,6 +225,13 @@
     position: absolute; left: 0; right: 0;
     background-image: repeating-linear-gradient(45deg, var(--closed-stripe) 0 6px, transparent 6px 12px);
   }
+  .timeoff-block {
+    position: absolute; left: 0; right: 0; box-sizing: border-box; overflow: hidden; pointer-events: none;
+    background: color-mix(in srgb, var(--now-line) 14%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--now-line) 55%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--now-line) 55%, transparent);
+    font-size: 0.68rem; font-weight: 700; color: var(--now-line); padding: 2px 4px;
+  }
   .now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--now-line); z-index: 5; }
   .appt-block {
     position: absolute; left: 3px; right: 3px; border-radius: 6px; padding: 0.2rem 0.35rem;
@@ -208,6 +242,8 @@
   .appt-block.other-source { border-color: var(--ink-soft); background: var(--surface); }
   .appt-block.oneline { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   .appt-block .t { font-weight: 700; }
+  .appt-block.cancellable { cursor: pointer; }
+  .appt-block.cancellable:hover { outline: 2px solid var(--now-line); outline-offset: 1px; }
 
   .panel .card h2 { font-size: 1rem; }
   .waitlist-row, .activity-row { font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
@@ -241,6 +277,9 @@
   .add-appt h2 button, .timeoff h2 button { font-size: 0.78rem; padding: 0.25rem 0.6rem; }
   .add-appt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.5rem; margin-top: 0.5rem; }
   .add-appt-grid select, .add-appt-grid input { width: 100%; }
+  .timeoff-range { display: flex; align-items: center; gap: 0.4rem; grid-column: span 2; min-width: 280px; }
+  .timeoff-range .range-label { flex: 0 0 auto; font-size: 0.78rem; color: var(--ink-soft); }
+  .timeoff-range input[type=date], .timeoff-range select { flex: 1 1 0; min-width: 0; width: auto; }
   .add-appt .actions, .timeoff .actions { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.6rem; }
   .add-appt .error-text, .timeoff .error-text { color: var(--now-line); }
   .timeoff-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
@@ -302,30 +341,27 @@
     <div class="app-main">
       <div class="topbar">
         <div class="endpoint-row">
+          <span class="status-pill" id="alexa-status"><span class="health-dot" id="health-dot"></span>Health: checking</span>
           <span>MCP endpoint</span>
           <code id="mcp-endpoint">-</code>
           <button id="copy-endpoint">Copy</button>
-          <span class="status-pill" id="alexa-status">Alexa+ link: checking</span>
         </div>
         <div class="spacer"></div>
       </div>
 
       <main>
         <section class="panel" data-panel="timeline">
-          <div class="card">
-            <div class="day-tabs" id="day-tabs"></div>
-            <div class="timeline-wrap">
-              <div class="timeline" id="timeline"></div>
-            </div>
-          </div>
-
           <div class="card add-appt">
             <h2>Add appointment <button id="add-appt-toggle">+ Add</button></h2>
             <form id="add-appt-form" style="display:none">
               <div class="add-appt-grid">
                 <select id="add-appt-service"></select>
                 <select id="add-appt-staff"></select>
-                <input type="text" id="add-appt-start" placeholder="Start, e.g. 2026-10-20T14:00:00-07:00" required>
+                <div class="timeoff-range">
+                  <span class="range-label">Start</span>
+                  <input type="date" id="add-appt-date" required>
+                  <select id="add-appt-time"></select>
+                </div>
                 <input type="text" id="add-appt-name" placeholder="Customer name" required>
                 <input type="text" id="add-appt-phone" placeholder="Customer phone (optional)">
                 <select id="add-appt-source">
@@ -345,6 +381,13 @@
                 <span class="muted" id="add-appt-error"></span>
               </div>
             </form>
+          </div>
+
+          <div class="card">
+            <div class="day-tabs" id="day-tabs"></div>
+            <div class="timeline-wrap">
+              <div class="timeline" id="timeline"></div>
+            </div>
           </div>
         </section>
 
@@ -427,8 +470,16 @@
             <form id="timeoff-form" style="display:none">
               <div class="add-appt-grid">
                 <select id="timeoff-staff"></select>
-                <input type="text" id="timeoff-from" placeholder="From, e.g. 2026-10-23T09:00:00-07:00" required>
-                <input type="text" id="timeoff-to" placeholder="To, e.g. 2026-10-23T17:00:00-07:00" required>
+                <div class="timeoff-range">
+                  <span class="range-label">From</span>
+                  <input type="date" id="timeoff-from-date" required>
+                  <select id="timeoff-from-time"></select>
+                </div>
+                <div class="timeoff-range">
+                  <span class="range-label">To</span>
+                  <input type="date" id="timeoff-to-date" required>
+                  <select id="timeoff-to-time"></select>
+                </div>
                 <input type="text" id="timeoff-reason" placeholder="Reason (optional)">
               </div>
               <div class="actions">
@@ -477,6 +528,11 @@
     return url.toString();
   }
 
+  /** Customer names, time-off reasons, etc. reach this dashboard via voice/MCP tool calls, not just the owner's own typing — escape before any innerHTML interpolation. */
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
+
   async function getJSON(path) {
     const res = await fetch(api(path));
     if (!res.ok) throw new Error(await res.text());
@@ -509,6 +565,18 @@
 
   const dayTabsEl = document.getElementById("day-tabs");
   const timelineEl = document.getElementById("timeline");
+  timelineEl.addEventListener("click", async (e) => {
+    const block = e.target.closest(".appt-block.cancellable");
+    if (!block) return;
+    const apptId = block.dataset.apptId;
+    if (!confirm("Cancel this appointment?")) return;
+    try {
+      await postJSON(`/api/appointments/${encodeURIComponent(apptId)}/cancel`, { businessId: state.business });
+      await loadState(state.ownerAuthMode ? undefined : state.business);
+    } catch (err) {
+      alert("Could not cancel: " + err.message);
+    }
+  });
   const pickerEl = document.getElementById("business-picker");
   const ownerBusinessLabelEl = document.getElementById("owner-business-label");
   const logoutBtnEl = document.getElementById("logout-btn");
@@ -536,10 +604,59 @@
   });
   switchSection(localStorage.getItem("frontdesk-section") || "timeline");
 
-  function fmtClock(iso) {
+  /** Reads hour/minute for an ISO instant as seen in a specific IANA timezone, via Intl rather than the browser's own local zone. */
+  function timePartsInZone(iso, timeZone) {
     const d = new Date(iso);
-    let h = d.getHours();
-    const m = d.getMinutes();
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hourCycle: "h23" });
+    const parts = fmt.formatToParts(d);
+    return { hour: Number(parts.find((p) => p.type === "hour").value), minute: Number(parts.find((p) => p.type === "minute").value) };
+  }
+
+  /** YYYY-MM-DD calendar date of an ISO instant as seen in a specific IANA timezone. */
+  function dateInZone(iso, timeZone) {
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    return fmt.format(new Date(iso));
+  }
+
+  /** UTC offset (e.g. "-07:00") of an IANA zone on a given date, DST-aware, for building ISO strings from a date+time pair. */
+  function offsetForZone(dateStr, timeZone) {
+    const dt = new Date(dateStr + "T12:00:00Z");
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" });
+    const part = fmt.formatToParts(dt).find((p) => p.type === "timeZoneName").value; // e.g. "GMT-7"
+    const m = part.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (!m) return "+00:00";
+    return `${m[1]}${m[2].padStart(2, "0")}:${(m[3] || "00").padStart(2, "0")}`;
+  }
+
+  /** <option> list in 15-minute steps, value "HH:MM" (24h, for combining with a date), label 12h for readability. */
+  function timeOptionsHtml() {
+    const opts = [];
+    for (let m = 0; m < 24 * 60; m += 15) {
+      const hh24 = Math.floor(m / 60);
+      const mm = String(m % 60).padStart(2, "0");
+      const h12 = hh24 % 12 || 12;
+      const period = hh24 < 12 ? "AM" : "PM";
+      opts.push(`<option value="${String(hh24).padStart(2, "0")}:${mm}">${h12}:${mm} ${period}</option>`);
+    }
+    return opts.join("");
+  }
+
+  /** Combines a date input value + a "HH:MM" time-select value into a full ISO instant in the business's local offset. */
+  function combineDateTime(dateStr, timeStr, timeZone) {
+    if (!dateStr || !timeStr) return "";
+    return `${dateStr}T${timeStr}:00${offsetForZone(dateStr, timeZone)}`;
+  }
+
+  /** timeZone omitted: iso has no offset (e.g. a synthetic tick-grid label), so browser-local parsing is already self-consistent. */
+  function fmtClock(iso, timeZone) {
+    let h, m;
+    if (timeZone) {
+      ({ hour: h, minute: m } = timePartsInZone(iso, timeZone));
+    } else {
+      const d = new Date(iso);
+      h = d.getHours();
+      m = d.getMinutes();
+    }
     const period = h < 12 ? "AM" : "PM";
     h = h % 12 === 0 ? 12 : h % 12;
     return h + ":" + String(m).padStart(2, "0") + " " + period;
@@ -558,7 +675,11 @@
     return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   }
 
-  function minutesOfDay(iso) {
+  function minutesOfDay(iso, timeZone) {
+    if (timeZone) {
+      const { hour, minute } = timePartsInZone(iso, timeZone);
+      return hour * 60 + minute;
+    }
     const d = new Date(iso);
     return d.getHours() * 60 + d.getMinutes();
   }
@@ -566,7 +687,7 @@
   async function loadBusinesses() {
     const { businesses } = await getJSON("/api/businesses");
     state.businesses = businesses;
-    pickerEl.innerHTML = businesses.map((b) => `<option value="${b.id}">${b.name}</option>`).join("");
+    pickerEl.innerHTML = businesses.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("");
     if (businesses.length > 0) {
       pickerEl.value = state.business || businesses[0].id;
       await loadState(pickerEl.value);
@@ -619,7 +740,7 @@
           p.id +
           '">' +
           '<span class="pname">' +
-          p.name +
+          escapeHtml(p.name) +
           " (" +
           formatCents(p.priceCents) +
           ")" +
@@ -658,7 +779,7 @@
     const services = (business && business.services) || [];
 
     document.getElementById("add-staff-services").innerHTML = services
-      .map((s) => `<label><input type="checkbox" value="${s.id}"> ${s.name}</label>`)
+      .map((s) => `<label><input type="checkbox" value="${s.id}"> ${escapeHtml(s.name)}</label>`)
       .join("");
 
     if (staff.length === 0) {
@@ -668,7 +789,7 @@
     staffEl.innerHTML = staff
       .map((s) => {
         const serviceNames = s.serviceIds.map((id) => (services.find((x) => x.id === id) || { name: id }).name).join(", ");
-        return `<div class="staff-row"><span class="sname">${s.name} &mdash; ${s.title}</span><span class="sservices">${serviceNames}</span></div>`;
+        return `<div class="staff-row"><span class="sname">${escapeHtml(s.name)} &mdash; ${escapeHtml(s.title)}</span><span class="sservices">${escapeHtml(serviceNames)}</span></div>`;
       })
       .join("");
   }
@@ -683,7 +804,7 @@
       .map((o) => {
         const readyBtn = o.status === "placed" ? `<button data-order="${o.id}" data-set="ready">Mark ready</button>` : "";
         const pickedUpBtn = `<button data-order="${o.id}" data-set="picked_up">Mark picked up</button>`;
-        return `<div class="order-row"><span>${o.quantity}x ${o.productName} - ${o.customerName} - ${o.pickupLabel} (${o.status}), code ${o.code}</span>${readyBtn}${pickedUpBtn}</div>`;
+        return `<div class="order-row"><span>${o.quantity}x ${escapeHtml(o.productName)} - ${escapeHtml(o.customerName)} - ${escapeHtml(o.pickupLabel)} (${o.status}), code ${o.code}</span>${readyBtn}${pickedUpBtn}</div>`;
       })
       .join("");
     ordersEl.querySelectorAll("button[data-order]").forEach((btn) => {
@@ -701,7 +822,16 @@
   function renderTimeOffOptions() {
     const business = state.businessObj;
     if (!business) return;
-    document.getElementById("timeoff-staff").innerHTML = business.staff.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+    document.getElementById("timeoff-staff").innerHTML = business.staff.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+    const fromTimeEl = document.getElementById("timeoff-from-time");
+    const toTimeEl = document.getElementById("timeoff-to-time");
+    if (!fromTimeEl.options.length) {
+      const html = timeOptionsHtml();
+      fromTimeEl.innerHTML = html;
+      toTimeEl.innerHTML = html;
+      fromTimeEl.value = "09:00";
+      toTimeEl.value = "17:00";
+    }
   }
 
   function renderTimeOff() {
@@ -713,8 +843,9 @@
     timeoffEl.innerHTML = state.staffTimeOff
       .map((t) => {
         const staffName = business ? (business.staff.find((s) => s.id === t.staffId) || {}).name || t.staffId : t.staffId;
-        const reason = t.reason ? ` (${t.reason})` : "";
-        return `<div class="timeoff-row"><span class="label">${staffName}: ${fmtClock(t.fromIso)} ${t.fromIso.slice(0, 10)} - ${fmtClock(t.toIso)} ${t.toIso.slice(0, 10)}${reason}</span><button data-timeoff="${t.id}">Remove</button></div>`;
+        const reason = t.reason ? ` (${escapeHtml(t.reason)})` : "";
+        const tz = business && business.timezone;
+        return `<div class="timeoff-row"><span class="label">${escapeHtml(staffName)}: ${fmtClock(t.fromIso, tz)} ${t.fromIso.slice(0, 10)} - ${fmtClock(t.toIso, tz)} ${t.toIso.slice(0, 10)}${reason}</span><button data-timeoff="${t.id}">Remove</button></div>`;
       })
       .join("");
     timeoffEl.querySelectorAll("button[data-timeoff]").forEach((btn) => {
@@ -729,7 +860,7 @@
     });
   }
 
-  const CHART_COLOR_VARS = { alexa: "--voice", phone: "--hold", "walk-in": "--offer" };
+  const CHART_COLOR_VARS = { alexa: "--chart-voice", phone: "--chart-hold", "walk-in": "--chart-offer" };
   const SOURCE_LABELS = { alexa: "Voice (Alexa+)", phone: "Phone", "walk-in": "Walk-in" };
 
   /** Canvas fillStyle can't resolve CSS custom properties, so chart colors are read as computed hex at render time — stays in sync with the light/dark theme toggle automatically. */
@@ -883,8 +1014,8 @@
     if (hourChartInstance) hourChartInstance.destroy();
     if (revenueChartInstance) revenueChartInstance.destroy();
     if (channelChartInstance) channelChartInstance.destroy();
-    hourChartInstance = totalBookings > 0 ? makeBarChart("hour-canvas", hourLabels, hourValues, cssVar("--voice"), (v) => String(Math.round(v))) : null;
-    revenueChartInstance = totalRevenueCents > 0 ? makeBarChart("revenue-canvas", dayLabelsShort, dayValues, cssVar("--hold"), (v) => "$" + Math.round(v)) : null;
+    hourChartInstance = totalBookings > 0 ? makeBarChart("hour-canvas", hourLabels, hourValues, cssVar("--chart-voice"), (v) => String(Math.round(v))) : null;
+    revenueChartInstance = totalRevenueCents > 0 ? makeBarChart("revenue-canvas", dayLabelsShort, dayValues, cssVar("--chart-hold"), (v) => "$" + Math.round(v)) : null;
     channelChartInstance = totalSourceCount > 0 ? makeChannelChart("channel-canvas", channelLabels, channelValues, channelColors) : null;
 
     body.querySelectorAll(".chart-table-toggle").forEach((btn) => {
@@ -901,8 +1032,13 @@
     if (!business) return;
     const serviceEl = document.getElementById("add-appt-service");
     const staffEl = document.getElementById("add-appt-staff");
-    serviceEl.innerHTML = business.services.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
-    staffEl.innerHTML = business.staff.map((s) => `<option value="${s.id}">${s.name}</option>`).join("");
+    serviceEl.innerHTML = business.services.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+    staffEl.innerHTML = business.staff.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+    const timeEl = document.getElementById("add-appt-time");
+    if (!timeEl.options.length) {
+      timeEl.innerHTML = timeOptionsHtml();
+      timeEl.value = "09:00";
+    }
   }
 
   function renderDayTabs(todayIso) {
@@ -967,12 +1103,31 @@
           })
           .join("");
 
+        const timeoffHtml = (state.staffTimeOff || [])
+          .filter((t) => t.staffId === staff.id)
+          .map((t) => {
+            const fromDate = dateInZone(t.fromIso, business.timezone);
+            const toDate = dateInZone(t.toIso, business.timezone);
+            if (dateIso < fromDate || dateIso > toDate) return null;
+            const fromMin = fromDate === dateIso ? minutesOfDay(t.fromIso, business.timezone) : DAY_START_MIN;
+            const toMinRaw = toDate === dateIso ? minutesOfDay(t.toIso, business.timezone) : DAY_END_MIN;
+            const from = Math.max(DAY_START_MIN, fromMin);
+            const to = Math.min(DAY_END_MIN, toMinRaw);
+            if (to <= from) return null;
+            const top = (from - DAY_START_MIN) * PX_PER_MIN;
+            const h = (to - from) * PX_PER_MIN;
+            const label = t.reason ? `Time off: ${escapeHtml(t.reason)}` : "Time off";
+            return `<div class="timeoff-block" style="top:${top}px;height:${h}px" title="${label}">${h >= 24 ? label : ""}</div>`;
+          })
+          .filter(Boolean)
+          .join("");
+
         const staffAppts = dayAppointments.filter((a) => a.staffId === staff.id);
         const apptHtml = staffAppts
           .map((a) => {
             const service = business.services.find((s) => s.id === a.serviceId);
-            const startMin = minutesOfDay(a.start);
-            const endMin = minutesOfDay(a.end);
+            const startMin = minutesOfDay(a.start, business.timezone);
+            const endMin = minutesOfDay(a.end, business.timezone);
             const top = (startMin - DAY_START_MIN) * PX_PER_MIN;
             const h = Math.max(14, (endMin - startMin) * PX_PER_MIN);
             const cls = ["appt-block"];
@@ -982,24 +1137,28 @@
             const oneLine = h < 30;
             if (oneLine) cls.push("oneline");
             const label = service ? service.name : a.serviceId;
+            const cancellable = a.status !== "cancelled" && a.status !== "expired";
+            if (cancellable) cls.push("cancellable");
             const inner = oneLine
-              ? `<span class="t">${fmtClock(a.start)}</span><span>${label}</span>`
-              : `<div class="t">${fmtClock(a.start)}</div><div>${label}</div><div>${a.customerName}</div>`;
-            return `<div class="${cls.join(" ")}" style="top:${top}px;height:${h}px" title="${label} with ${a.customerName}">${inner}</div>`;
+              ? `<span class="t">${fmtClock(a.start, business.timezone)}</span><span>${escapeHtml(label)}</span>`
+              : `<div class="t">${fmtClock(a.start, business.timezone)}</div><div>${escapeHtml(label)}</div><div>${escapeHtml(a.customerName)}</div>`;
+            const titleText = cancellable ? `${label} with ${a.customerName} — click to cancel` : `${label} with ${a.customerName}`;
+            const dataAttr = cancellable ? ` data-appt-id="${a.id}"` : "";
+            return `<div class="${cls.join(" ")}" style="top:${top}px;height:${h}px" title="${escapeHtml(titleText)}"${dataAttr}>${inner}</div>`;
           })
           .join("");
 
         let nowLine = "";
         if (dateIso === state.now.slice(0, 10)) {
-          const nowMin = minutesOfDay(state.now);
+          const nowMin = minutesOfDay(state.now, business.timezone);
           if (nowMin >= DAY_START_MIN && nowMin <= DAY_END_MIN) {
             nowLine = `<div class="now-line" style="top:${(nowMin - DAY_START_MIN) * PX_PER_MIN}px"></div>`;
           }
         }
 
         return `<div class="staff-col">
-          <div class="staff-head">${staff.name}</div>
-          <div class="staff-body" style="height:${heightPx}px">${closedHtml}${ticks.join("")}${apptHtml}${nowLine}</div>
+          <div class="staff-head">${escapeHtml(staff.name)}</div>
+          <div class="staff-body" style="height:${heightPx}px">${closedHtml}${timeoffHtml}${ticks.join("")}${apptHtml}${nowLine}</div>
         </div>`;
       })
       .join("");
@@ -1023,7 +1182,7 @@
         const business = state.businessObj;
         const service = business ? business.services.find((s) => s.id === w.serviceId) : null;
         const label = w.status === "offered" ? "spot offered" : "waiting";
-        return `<div class="waitlist-row">${w.customerName} - ${service ? service.name : w.serviceId} - ${w.windowLabel} (${label})</div>`;
+        return `<div class="waitlist-row">${escapeHtml(w.customerName)} - ${escapeHtml(service ? service.name : w.serviceId)} - ${escapeHtml(w.windowLabel)} (${label})</div>`;
       })
       .join("");
   }
@@ -1053,14 +1212,28 @@
     };
   }
 
+  const HEALTH_BUDGET_MS = 500;
+  const HEALTH_WARN_MS = 250; // half the Alexa+ budget: still fine, but worth flagging before it's a problem
+
+  function setHealthState(state, text) {
+    alexaStatusEl.innerHTML = `<span class="health-dot ${state}"></span>${text}`;
+  }
+
   async function refreshHealth() {
     try {
       const res = await fetch("/health");
+      if (!res.ok) throw new Error("not ok");
       const health = await res.json();
-      const p95 = health.latency.p95;
-      alexaStatusEl.textContent = `Alexa+ link live: ${health.latency.count} calls, p95 ${p95} ms (limit 500 ms)`;
+      const { count, p95 } = health.latency;
+      if (health.status !== "ok" || p95 > HEALTH_BUDGET_MS) {
+        setHealthState("bad", `Health: over budget — p95 ${p95} ms (limit ${HEALTH_BUDGET_MS} ms)`);
+      } else if (p95 > HEALTH_WARN_MS) {
+        setHealthState("warn", `Health: slow — ${count} calls, p95 ${p95} ms (limit ${HEALTH_BUDGET_MS} ms)`);
+      } else {
+        setHealthState("ok", `Health: good — ${count} calls, p95 ${p95} ms`);
+      }
     } catch {
-      alexaStatusEl.textContent = "Alexa+ link: unavailable";
+      setHealthState("bad", "Health: unreachable");
     }
   }
 
@@ -1119,7 +1292,7 @@
     const rows = business.services
       .map((s) => {
         const staffNames = business.staff.filter((st) => st.serviceIds.includes(s.id)).map((st) => st.name).join(", ");
-        return `<tr><td>${s.name}</td><td>${s.durationMin} min</td><td>$${(s.priceCents / 100).toFixed(2)}</td><td>${staffNames}</td></tr>`;
+        return `<tr><td>${escapeHtml(s.name)}</td><td>${s.durationMin} min</td><td>$${(s.priceCents / 100).toFixed(2)}</td><td>${escapeHtml(staffNames)}</td></tr>`;
       })
       .join("");
     table.innerHTML = `<tr><th>Service</th><th>Duration</th><th>Price</th><th>Staff</th></tr>${rows}`;
@@ -1155,17 +1328,19 @@
     const freq = document.getElementById("add-appt-freq").value;
     const count = Number(document.getElementById("add-appt-count").value);
     try {
+      const tz = state.businessObj && state.businessObj.timezone;
       await postJSON("/api/appointments", {
         businessId: state.business,
         serviceId: document.getElementById("add-appt-service").value,
         staffId: document.getElementById("add-appt-staff").value,
-        start: document.getElementById("add-appt-start").value,
+        start: combineDateTime(document.getElementById("add-appt-date").value, document.getElementById("add-appt-time").value, tz),
         customerName: document.getElementById("add-appt-name").value,
         customerPhone: document.getElementById("add-appt-phone").value || undefined,
         source: document.getElementById("add-appt-source").value,
         recurrence: freq && count >= 2 ? { freq, count } : undefined,
       });
       document.getElementById("add-appt-form").reset();
+      document.getElementById("add-appt-time").value = "09:00";
       document.getElementById("add-appt-count").style.display = "none";
       await loadState(state.business);
     } catch (err) {
@@ -1185,14 +1360,17 @@
     errorEl.textContent = "";
     errorEl.className = "muted";
     try {
+      const tz = state.businessObj && state.businessObj.timezone;
       await postJSON("/api/staff-time-off", {
         businessId: state.business,
         staffId: document.getElementById("timeoff-staff").value,
-        fromIso: document.getElementById("timeoff-from").value,
-        toIso: document.getElementById("timeoff-to").value,
+        fromIso: combineDateTime(document.getElementById("timeoff-from-date").value, document.getElementById("timeoff-from-time").value, tz),
+        toIso: combineDateTime(document.getElementById("timeoff-to-date").value, document.getElementById("timeoff-to-time").value, tz),
         reason: document.getElementById("timeoff-reason").value || undefined,
       });
       document.getElementById("timeoff-form").reset();
+      document.getElementById("timeoff-from-time").value = "09:00";
+      document.getElementById("timeoff-to-time").value = "17:00";
       await loadState(state.business);
     } catch (err) {
       errorEl.textContent = err.message;
