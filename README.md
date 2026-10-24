@@ -12,7 +12,7 @@ Builder mini challenge (Amazon Bedrock) and the Open Source mini challenge
 
 ## Demo
 
-[▶ Watch the demo video](docs/demo.mp4)
+[▶ Watch the demo video](https://youtu.be/G3zScv5czvo)
 
 ## Why this, and why now
 
